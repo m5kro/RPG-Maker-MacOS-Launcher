@@ -1,5 +1,5 @@
 # RPG-Maker-MV-MZ-MacOS-Launcher
-A launcher to natively play RPG maker MV and MZ games on MacOS! <br>
+A launcher to natively play RPG maker MV and MZ games on MacOS! (currently intel x64 only)<br>
 <br>
 # How it works
 1. Downloads nwjs
