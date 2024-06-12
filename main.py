@@ -5,6 +5,7 @@ import subprocess
 import requests
 import zipfile
 import shutil
+import platform
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QMessageBox
 
@@ -115,12 +116,16 @@ class FolderPathApp(QMainWindow):
         TARGET_DIR = os.path.expanduser("~/Applications/nwjs.app")
 
         # Function to download and install NWJS
-        def download_and_install(version):
-            url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-x64.zip"
+        def download_and_install(version, arch):
+            url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
             tmp_file = "/tmp/nwjs.zip"
 
-            print(f"Downloading and installing version {version}...")
+            print(f"Downloading and installing version {version} for {arch} architecture...")
             response = requests.get(url)
+            if response.status_code != 200:
+                print(f"Error: Failed to download version {version} for {arch}.")
+                exit(1)
+
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
 
@@ -131,12 +136,15 @@ class FolderPathApp(QMainWindow):
             if os.path.exists(TARGET_DIR):
                 shutil.rmtree(TARGET_DIR)
             
-            shutil.move(f"/tmp/nwjs-sdk-{version}-osx-x64/nwjs.app", TARGET_DIR)
+            shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", TARGET_DIR)
             print(f"Version {version} installed successfully at {TARGET_DIR}")
 
             # Clear temporary files
             os.remove(tmp_file)
-            shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-x64")
+            shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
+
+        # Detect the OS architecture
+        arch = "x64" if platform.machine() == "x86_64" else "arm64"
 
         # Query the URL
         print("Querying available versions...")
@@ -149,7 +157,7 @@ class FolderPathApp(QMainWindow):
         latest = data["latest"]
         
         # Install the latest version
-        download_and_install(latest)
+        download_and_install(latest, arch)
 
         # Save the latest version to file
         with open(CURRENT, "w") as f:
