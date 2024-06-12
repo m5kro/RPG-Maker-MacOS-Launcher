@@ -11,7 +11,7 @@ A launcher to natively play RPG maker MV and MZ games on MacOS!<br>
 Native version (Specifically x64 or arm64 depending on your system):
 1. Clone the repo <br> `git clone https://github.com/m5kro/RPG-Maker-MV-MZ-MacOS-Launcher/`
 2. Setup the venv <br> `python3 -m venv RPGM-Launcher` <br> `source RPGM-Launcher/bin/activate`
-3. Install packages <br> `pip install PySide6-Essentials evbunpack requests PyInstaller`
+3. Install packages <br> `pip install PySide6-Essentials evbunpack requests chardet PyInstaller`
 4. Build the app <br> `pyinstaller --name "RPG-Maker-Launcher" --icon ./icon.icns --onefile --windowed main.py`
 5. Find the app in the dist folder
 6. Decativate venv <br> `deactivate`
