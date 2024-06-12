@@ -6,6 +6,7 @@ import requests
 import zipfile
 import shutil
 import platform
+import chardet
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QMessageBox
 
@@ -49,24 +50,33 @@ class FolderPathApp(QMainWindow):
             else:
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
 
+    
     def check_package_json(self, folder_path):
         # Define the file path
         file_path = os.path.join(folder_path, 'package.json')
         if os.path.exists(file_path):
-            # Step 1: Read the JSON file
-            with open(file_path, 'r') as file:
+            # Step 1: Detect the file encoding
+            with open(file_path, 'rb') as file:
+                raw_data = file.read()
+                result = chardet.detect(raw_data)
+                encoding = result['encoding']
+
+            # Step 2: Read the JSON file with the detected encoding
+            with open(file_path, 'r', encoding=encoding) as file:
                 data = json.load(file)
 
-            # Step 2: Check the `name` field and update if necessary
-            if data['name'].strip() == '':
+            # Step 3: Check the `name` field and update if necessary
+            if 'name' in data and data['name'].strip() == '':
                 data['name'] = 'tempname'
 
-            # Step 3: Write the updated JSON back to the file
-            with open(file_path, 'w') as file:
+            # Step 4: Write the updated JSON back to the file with the detected encoding
+            with open(file_path, 'w', encoding=encoding) as file:
                 json.dump(data, file, indent=4)
+
             print("JSON file updated successfully.")
             return True
         else:
+            print("File does not exist.")
             return False
 
     def check_and_unpack_game_en(self, folder_path):
