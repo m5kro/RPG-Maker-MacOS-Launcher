@@ -8,7 +8,9 @@ import shutil
 import platform
 import chardet
 from evbunpack.__main__ import unpack_files
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QFileDialog, QVBoxLayout, QWidget, QMessageBox
+from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
+                               QVBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
+                               QDialogButtonBox, QFormLayout)
 
 class FolderPathApp(QMainWindow):
     def __init__(self):
@@ -44,32 +46,25 @@ class FolderPathApp(QMainWindow):
         if folder_path:
             print("Selected folder path:", folder_path)
             if self.check_package_json(folder_path):
-                # Proceed with package.json found
                 print("Valid RPG Maker MV/MZ game folder.")
                 self.launch_game(folder_path)
             else:
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
 
-    
     def check_package_json(self, folder_path):
-        # Define the file path
         file_path = os.path.join(folder_path, 'package.json')
         if os.path.exists(file_path):
-            # Step 1: Detect the file encoding
             with open(file_path, 'rb') as file:
                 raw_data = file.read()
                 result = chardet.detect(raw_data)
                 encoding = result['encoding']
 
-            # Step 2: Read the JSON file with the detected encoding
             with open(file_path, 'r', encoding=encoding) as file:
                 data = json.load(file)
 
-            # Step 3: Check the `name` field and update if necessary
             if 'name' in data and data['name'].strip() == '':
                 data['name'] = 'tempname'
 
-            # Step 4: Write the updated JSON back to the file with the detected encoding
             with open(file_path, 'w', encoding=encoding) as file:
                 json.dump(data, file, indent=4)
 
@@ -81,8 +76,7 @@ class FolderPathApp(QMainWindow):
 
     def check_and_unpack_game_en(self, folder_path):
         game_exe = None
-        
-        # Check for game_en.exe file (case insensitive)
+
         for root, _, files in os.walk(folder_path):
             for file in files:
                 if file.lower() == "game_en.exe":
@@ -90,14 +84,11 @@ class FolderPathApp(QMainWindow):
                     break
             if game_exe:
                 break
-        
+
         if game_exe:
             extracted_dir = os.path.join(folder_path, "extracted")
-            
-            # Run the unpack_files function
             unpack_files(game_exe, extracted_dir, False, False)
-            
-            # Copy files from extracted to the given directory, overwriting any with the same name
+
             for item in os.listdir(extracted_dir):
                 s = os.path.join(extracted_dir, item)
                 d = os.path.join(folder_path, item)
@@ -106,10 +97,7 @@ class FolderPathApp(QMainWindow):
                 else:
                     shutil.copy2(s, d)
 
-            # Remove the game_en.exe file after unpacking and copying
             os.remove(game_exe)
-
-            # Remove the extracted directory
             shutil.rmtree(extracted_dir)
         else:
             print("game_en.exe not found in the directory")
@@ -121,11 +109,8 @@ class FolderPathApp(QMainWindow):
 
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
-        TMP_FILE = "/tmp/versions.json"
-        CURRENT = os.path.expanduser("~/nwjs_version.txt")
         TARGET_DIR = os.path.expanduser("~/Applications/nwjs.app")
 
-        # Function to download and install NWJS
         def download_and_install(version, arch):
             url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
             tmp_file = "/tmp/nwjs.zip"
@@ -134,56 +119,60 @@ class FolderPathApp(QMainWindow):
             response = requests.get(url)
             if response.status_code != 200:
                 print(f"Error: Failed to download version {version} for {arch}.")
-                exit(1)
+                return
 
             with open(tmp_file, "wb") as f:
                 f.write(response.content)
 
-            # Extract the downloaded zip file using unzip
             subprocess.run(["unzip", "-q", tmp_file, "-d", "/tmp"])
 
-            # Remove existing NWJS if it exists
             if os.path.exists(TARGET_DIR):
                 shutil.rmtree(TARGET_DIR)
             
             shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", TARGET_DIR)
             print(f"Version {version} installed successfully at {TARGET_DIR}")
 
-            # Clear temporary files
             os.remove(tmp_file)
             shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
 
-        # Detect the OS architecture
         arch = "x64" if platform.machine() == "x86_64" else "arm64"
-
-        # Query the URL
         print("Querying available versions...")
         response = requests.get(URL)
         if response.status_code != 200:
             print("Error: Failed to query.")
-            exit(1)
+            return
 
         data = response.json()
-        latest = data["latest"]
+        versions = [v["version"] for v in data["versions"]]
         
-        # Install the latest version
-        download_and_install(latest, arch)
+        # Show version selection dialog
+        version, ok = self.show_version_selection_dialog(versions)
+        if ok and version:
+            download_and_install(version, arch)
+            if self.check_nwjs_installed():
+                self.select_button.setEnabled(True)
+                self.select_button.setText("Select Game Folder")
+            else:
+                self.select_button.setEnabled(False)
+                self.select_button.setText("NWJS not installed")
+            QMessageBox.information(self, "Install/Update NWJS", "NWJS installation/update completed successfully.")
 
-        # Save the latest version to file
-        with open(CURRENT, "w") as f:
-            f.write(latest)
+    def show_version_selection_dialog(self, versions):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select NWJS Version")
+        layout = QFormLayout(dialog)
+        
+        combo_box = QComboBox(dialog)
+        combo_box.addItems(versions)
+        layout.addRow("Version:", combo_box)
 
-        print("Finished!")
-        # Recheck NWJS status after installation
-        if self.check_nwjs_installed():
-            self.select_button.setEnabled(True)
-            self.select_button.setText("Select Game Folder")
-        else:
-            self.select_button.setEnabled(False)
-            self.select_button.setText("NWJS not installed")
-            
-        # Tell the user that the installation is complete
-        QMessageBox.information(self, "Install/Update NWJS", "NWJS installation/update completed successfully.")
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+
+        result = dialog.exec()
+        return combo_box.currentText(), result == QDialog.Accepted
 
 def check_appdir():
     app_dir = os.path.expanduser("~/Applications")
