@@ -9,8 +9,8 @@ import platform
 import chardet
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
-                               QVBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout)
+                               QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
+                               QDialogButtonBox, QFormLayout, QLabel)
 
 class FolderPathApp(QMainWindow):
     def __init__(self):
@@ -24,22 +24,49 @@ class FolderPathApp(QMainWindow):
 
         self.layout = QVBoxLayout(self.central_widget)
 
+        version_layout = QHBoxLayout()
+        self.version_label = QLabel("NWJS version:", self)
+        version_layout.addWidget(self.version_label)
+
+        self.version_selector = QComboBox(self)
+        version_layout.addWidget(self.version_selector)
+        self.layout.addLayout(version_layout)
+
         self.select_button = QPushButton("Select Game Folder", self)
         self.layout.addWidget(self.select_button)
 
-        self.install_button = QPushButton("Install/Update NWJS", self)
+        self.install_button = QPushButton("Install NWJS Version", self)
         self.layout.addWidget(self.install_button)
+
+        self.uninstall_button = QPushButton("Uninstall NWJS Version", self)
+        self.layout.addWidget(self.uninstall_button)
+
         self.install_button.clicked.connect(self.install_nwjs)
-
-        if not self.check_nwjs_installed():
-            self.select_button.setEnabled(False)
-            self.select_button.setText("NWJS not installed")
-
+        self.uninstall_button.clicked.connect(self.uninstall_nwjs)
         self.select_button.clicked.connect(self.select_folder)
 
+        self.update_version_selector()
+        self.update_select_button_state()
+
     def check_nwjs_installed(self):
-        applications_dir = os.path.expanduser("~/Applications")
-        return "nwjs.app" in os.listdir(applications_dir)
+        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        return os.path.exists(applications_dir) and any(os.path.isdir(os.path.join(applications_dir, v)) for v in os.listdir(applications_dir))
+
+    def update_version_selector(self):
+        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        if os.path.exists(applications_dir):
+            versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
+            self.version_selector.clear()
+            self.version_selector.addItems(versions)
+        self.update_select_button_state()
+
+    def update_select_button_state(self):
+        if self.check_nwjs_installed():
+            self.select_button.setEnabled(True)
+            self.select_button.setText("Select Game Folder")
+        else:
+            self.select_button.setEnabled(False)
+            self.select_button.setText("NWJS not installed")
 
     def select_folder(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Select Game Folder")
@@ -103,15 +130,27 @@ class FolderPathApp(QMainWindow):
             print("game_en.exe not found in the directory")
 
     def launch_game(self, folder_path):
-        nwjs_path = os.path.expanduser("~/Applications/nwjs.app/Contents/MacOS/nwjs")
+        selected_version = self.version_selector.currentText()
+        if not selected_version:
+            QMessageBox.critical(self, "Error", "No NWJS version selected.")
+            return
+
+        nwjs_dir = os.path.expanduser(f"~/Applications/RPGM-Launcher/{selected_version}")
+        nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
+
+        # Check if run-with-rosetta file exists
+        run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
         self.check_and_unpack_game_en(folder_path)
-        subprocess.Popen([nwjs_path, folder_path])
+        if os.path.exists(run_with_rosetta_file):
+            subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path])
+        else:
+            subprocess.Popen([nwjs_path, folder_path])
 
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
-        TARGET_DIR = os.path.expanduser("~/Applications/nwjs.app")
+        BASE_DIR = os.path.expanduser("~/Applications/RPGM-Launcher")
 
-        def download_and_install(version, arch):
+        def download_and_install(version, arch, use_rosetta=False):
             url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
             tmp_file = "/tmp/nwjs.zip"
 
@@ -126,16 +165,22 @@ class FolderPathApp(QMainWindow):
 
             subprocess.run(["unzip", "-q", tmp_file, "-d", "/tmp"])
 
-            if os.path.exists(TARGET_DIR):
-                shutil.rmtree(TARGET_DIR)
+            target_dir = os.path.join(BASE_DIR, version)
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
             
-            shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", TARGET_DIR)
-            print(f"Version {version} installed successfully at {TARGET_DIR}")
+            os.makedirs(target_dir, exist_ok=True)
+            shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", target_dir)
+            print(f"Version {version} installed successfully at {target_dir}")
+
+            if use_rosetta:
+                with open(os.path.join(target_dir, "run-with-rosetta"), "w") as f:
+                    f.write("This file indicates NWJS should be run with Rosetta 2.")
 
             os.remove(tmp_file)
             shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
 
-        arch = "x64" if platform.machine() == "x86_64" else "arm64"
+        arch = "arm64" if platform.machine() == "arm64" else "x64"
         print("Querying available versions...")
         response = requests.get(URL)
         if response.status_code != 200:
@@ -143,19 +188,28 @@ class FolderPathApp(QMainWindow):
             return
 
         data = response.json()
-        versions = [v["version"] for v in data["versions"]]
+        versions = {v["version"]: v for v in data["versions"]}
         
         # Show version selection dialog
-        version, ok = self.show_version_selection_dialog(versions)
+        version, ok = self.show_version_selection_dialog(versions.keys())
         if ok and version:
-            download_and_install(version, arch)
+            version_info = versions[version]
+            use_rosetta = False
+            if arch == "arm64" and "osx-arm64" not in version_info["files"]:
+                use_rosetta = self.show_rosetta_warning()
+                if not use_rosetta:
+                    return
+                arch = "x64"
+            download_and_install(version, arch, use_rosetta)
+            self.update_version_selector()
             if self.check_nwjs_installed():
                 self.select_button.setEnabled(True)
                 self.select_button.setText("Select Game Folder")
             else:
                 self.select_button.setEnabled(False)
                 self.select_button.setText("NWJS not installed")
-            QMessageBox.information(self, "Install/Update NWJS", "NWJS installation/update completed successfully.")
+            QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
+
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
@@ -174,8 +228,39 @@ class FolderPathApp(QMainWindow):
         result = dialog.exec()
         return combo_box.currentText(), result == QDialog.Accepted
 
+    def show_rosetta_warning(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Rosetta Warning")
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel("An Apple Silicon / ARM64 build of this version of NWJS is unavailable. Would you like to use the Intel / x64 version with Rosetta?", dialog)
+        layout.addWidget(label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        result = dialog.exec()
+        return result == QDialog.Accepted
+
+    def uninstall_nwjs(self):
+        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
+
+        version, ok = self.show_version_selection_dialog(versions)
+        if ok and version:
+            target_dir = os.path.join(applications_dir, version)
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
+                self.update_version_selector()
+                self.update_select_button_state()
+                QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
+            else:
+                QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
+
 def check_appdir():
-    app_dir = os.path.expanduser("~/Applications")
+    app_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
     if not os.path.exists(app_dir):
         os.makedirs(app_dir)
 
