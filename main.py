@@ -185,7 +185,13 @@ class FolderPathApp(QMainWindow):
         # Tell the user that the installation is complete
         QMessageBox.information(self, "Install/Update NWJS", "NWJS installation/update completed successfully.")
 
+def check_appdir():
+    app_dir = os.path.expanduser("~/Applications")
+    if not os.path.exists(app_dir):
+        os.makedirs(app_dir)
+
 def main():
+    check_appdir()
     app = QApplication(sys.argv)
     window = FolderPathApp()
     window.show()
