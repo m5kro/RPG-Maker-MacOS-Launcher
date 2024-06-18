@@ -10,9 +10,11 @@ import chardet
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout, QLabel)
+                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox)
 
 class FolderPathApp(QMainWindow):
+    SETTINGS_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/settings.json")
+
     def __init__(self):
         super().__init__()
 
@@ -32,6 +34,9 @@ class FolderPathApp(QMainWindow):
         version_layout.addWidget(self.version_selector)
         self.layout.addLayout(version_layout)
 
+        self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
+        self.layout.addWidget(self.extract_checkbox)
+
         self.select_button = QPushButton("Select Game Folder", self)
         self.layout.addWidget(self.select_button)
 
@@ -47,6 +52,28 @@ class FolderPathApp(QMainWindow):
 
         self.update_version_selector()
         self.update_select_button_state()
+        self.load_settings()
+
+    def load_settings(self):
+        if os.path.exists(self.SETTINGS_FILE):
+            with open(self.SETTINGS_FILE, 'r') as file:
+                settings = json.load(file)
+                self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
+                last_version = settings.get('last_selected_version')
+                if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
+                    self.version_selector.setCurrentText(last_version)
+
+    def save_settings(self):
+        settings = {
+            'extract_game_en': self.extract_checkbox.isChecked(),
+            'last_selected_version': self.version_selector.currentText()
+        }
+        with open(self.SETTINGS_FILE, 'w') as file:
+            json.dump(settings, file, indent=4)
+
+    def closeEvent(self, event):
+        self.save_settings()
+        super().closeEvent(event)
 
     def check_nwjs_installed(self):
         applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
@@ -74,9 +101,12 @@ class FolderPathApp(QMainWindow):
             print("Selected folder path:", folder_path)
             if self.check_package_json(folder_path):
                 print("Valid RPG Maker MV/MZ game folder.")
+                if self.extract_checkbox.isChecked():
+                    self.check_and_unpack_game_en(folder_path)
                 self.launch_game(folder_path)
             else:
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
+        self.save_settings()
 
     def check_package_json(self, folder_path):
         file_path = os.path.join(folder_path, 'package.json')
@@ -140,7 +170,6 @@ class FolderPathApp(QMainWindow):
 
         # Check if run-with-rosetta file exists
         run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
-        self.check_and_unpack_game_en(folder_path)
         if os.path.exists(run_with_rosetta_file):
             subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path])
         else:
@@ -209,7 +238,6 @@ class FolderPathApp(QMainWindow):
                 self.select_button.setEnabled(False)
                 self.select_button.setText("NWJS not installed")
             QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
-
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
