@@ -274,7 +274,9 @@ class FolderPathApp(QMainWindow):
                     return
                 arch = "x64"
             download_and_install(version, arch, use_rosetta)
+            self.save_settings()
             self.update_version_selector()
+            self.load_settings()
             if self.check_nwjs_installed():
                 self.select_button.setEnabled(True)
                 self.select_button.setText("Select Game Folder")
@@ -324,7 +326,9 @@ class FolderPathApp(QMainWindow):
             target_dir = os.path.join(applications_dir, version)
             if os.path.exists(target_dir):
                 shutil.rmtree(target_dir)
+                self.save_settings()
                 self.update_version_selector()
+                self.load_settings()
                 self.update_select_button_state()
                 logging.info("NWJS version %s uninstalled successfully.", version)
                 QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
