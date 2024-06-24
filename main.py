@@ -9,10 +9,16 @@ import zipfile
 import shutil
 import platform
 import chardet
+import logging
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
                                QDialogButtonBox, QFormLayout, QLabel, QCheckBox)
+
+# Set up logging
+LOG_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/log.txt")
+logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 class FolderPathApp(QMainWindow):
     SETTINGS_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/settings.json")
@@ -100,13 +106,14 @@ class FolderPathApp(QMainWindow):
     def select_folder(self):
         folder_path = QFileDialog.getExistingDirectory(self, "Select Game Folder")
         if folder_path:
-            print("Selected folder path:", folder_path)
+            logging.info("Selected folder path: %s", folder_path)
             if self.check_package_json(folder_path):
-                print("Valid RPG Maker MV/MZ game folder.")
+                logging.info("Valid RPG Maker MV/MZ game folder.")
                 if self.extract_checkbox.isChecked():
                     self.check_and_unpack_game_en(folder_path)
                 self.launch_game(folder_path)
             else:
+                logging.error("No package.json found in the selected folder.")
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
         self.save_settings()
 
@@ -127,10 +134,10 @@ class FolderPathApp(QMainWindow):
             with open(file_path, 'w', encoding=encoding) as file:
                 json.dump(data, file, indent=4)
 
-            print("JSON file updated successfully.")
+            logging.info("JSON file updated successfully.")
             return True
         else:
-            print("File does not exist.")
+            logging.error("File does not exist.")
             return False
 
     def check_and_unpack_game_en(self, folder_path):
@@ -158,24 +165,26 @@ class FolderPathApp(QMainWindow):
 
             os.remove(game_exe)
             shutil.rmtree(extracted_dir)
+            logging.info("game_en.exe extracted and original file removed.")
         else:
-            print("game_en.exe not found in the directory")
+            logging.error("game_en.exe not found in the directory")
 
     def launch_game(self, folder_path):
         selected_version = self.version_selector.currentText()
         if not selected_version:
+            logging.error("No NWJS version selected.")
             QMessageBox.critical(self, "Error", "No NWJS version selected.")
             return
 
         nwjs_dir = os.path.expanduser(f"~/Applications/RPGM-Launcher/{selected_version}")
         nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
 
-        # Check if run-with-rosetta file exists
         run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
         if os.path.exists(run_with_rosetta_file):
             subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path])
         else:
             subprocess.Popen([nwjs_path, folder_path])
+        logging.info("Game launched using NWJS version %s.", selected_version)
 
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
@@ -185,10 +194,10 @@ class FolderPathApp(QMainWindow):
             url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
             tmp_file = "/tmp/nwjs.zip"
 
-            print(f"Downloading and installing version {version} for {arch} architecture...")
+            logging.info("Downloading and installing version %s for %s architecture...", version, arch)
             response = requests.get(url)
             if response.status_code != 200:
-                print(f"Error: Failed to download version {version} for {arch}.")
+                logging.error("Failed to download version %s for %s.", version, arch)
                 return
 
             with open(tmp_file, "wb") as f:
@@ -202,7 +211,7 @@ class FolderPathApp(QMainWindow):
             
             os.makedirs(target_dir, exist_ok=True)
             shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", target_dir)
-            print(f"Version {version} installed successfully at {target_dir}")
+            logging.info("Version %s installed successfully at %s", version, target_dir)
 
             if use_rosetta:
                 with open(os.path.join(target_dir, "run-with-rosetta"), "w") as f:
@@ -212,16 +221,15 @@ class FolderPathApp(QMainWindow):
             shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
 
         arch = "arm64" if platform.machine() == "arm64" else "x64"
-        print("Querying available versions...")
+        logging.info("Querying available versions...")
         response = requests.get(URL)
         if response.status_code != 200:
-            print("Error: Failed to query.")
+            logging.error("Failed to query NWJS versions.")
             return
 
         data = response.json()
         versions = {v["version"]: v for v in data["versions"]}
         
-        # Show version selection dialog
         version, ok = self.show_version_selection_dialog(versions.keys())
         if ok and version:
             version_info = versions[version]
@@ -285,8 +293,10 @@ class FolderPathApp(QMainWindow):
                 shutil.rmtree(target_dir)
                 self.update_version_selector()
                 self.update_select_button_state()
+                logging.info("NWJS version %s uninstalled successfully.", version)
                 QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
             else:
+                logging.error("NWJS version %s not found.", version)
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
 
 def check_appdir():
@@ -296,6 +306,11 @@ def check_appdir():
 
 def main():
     check_appdir()
+    
+    # Redirect stdout and stderr to log file
+    sys.stdout = open(LOG_FILE, 'a')
+    sys.stderr = open(LOG_FILE, 'a')
+    
     app = QApplication(sys.argv)
     window = FolderPathApp()
     window.show()
