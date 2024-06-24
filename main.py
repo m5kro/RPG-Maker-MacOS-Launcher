@@ -1,5 +1,3 @@
-# m5kro - 2024
-
 import sys
 import os
 import json
@@ -13,7 +11,8 @@ import logging
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox)
+                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog)
+from PySide6.QtCore import QTimer, QDateTime, Qt
 
 # Set up logging
 LOG_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/log.txt")
@@ -195,13 +194,45 @@ class FolderPathApp(QMainWindow):
             tmp_file = "/tmp/nwjs.zip"
 
             logging.info("Downloading and installing version %s for %s architecture...", version, arch)
-            response = requests.get(url)
+            response = requests.get(url, stream=True)
             if response.status_code != 200:
                 logging.error("Failed to download version %s for %s.", version, arch)
                 return
 
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            chunk_size = 1024  # 1KB
+
+            progress_dialog = QProgressDialog("Downloading NWJS...", "Cancel", 0, total_size, self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            start_time = QDateTime.currentDateTime()
+            canceled = False
+
             with open(tmp_file, "wb") as f:
-                f.write(response.content)
+                for chunk in response.iter_content(chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_dialog.setValue(downloaded_size)
+
+                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                                     f"Speed: {download_speed:.2f} MB/s")
+
+                        if progress_dialog.wasCanceled():
+                            canceled = True
+                            logging.info("Download canceled by user.")
+                            break
+
+            if canceled:
+                os.remove(tmp_file)
+                QMessageBox.information(self, "NWJS Installation", "NWJS Installation Canceled.")
+                return
 
             subprocess.run(["unzip", "-q", tmp_file, "-d", "/tmp"])
 
@@ -219,6 +250,9 @@ class FolderPathApp(QMainWindow):
 
             os.remove(tmp_file)
             shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
+
+            progress_dialog.close()
+            QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
 
         arch = "arm64" if platform.machine() == "arm64" else "x64"
         logging.info("Querying available versions...")
@@ -247,7 +281,6 @@ class FolderPathApp(QMainWindow):
             else:
                 self.select_button.setEnabled(False)
                 self.select_button.setText("NWJS not installed")
-            QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
