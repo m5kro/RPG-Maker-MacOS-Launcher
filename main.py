@@ -303,6 +303,9 @@ def check_appdir():
     app_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
     if not os.path.exists(app_dir):
         os.makedirs(app_dir)
+    # Clear log file on startup
+    with open(LOG_FILE, 'w') as file:
+        file.write("")
 
 def main():
     check_appdir()
