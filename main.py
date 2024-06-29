@@ -11,7 +11,7 @@ import logging
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog)
+                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
 # Set up logging
@@ -54,6 +54,10 @@ class FolderPathApp(QMainWindow):
         self.layout.addWidget(self.start_game_button)
         self.start_game_button.setEnabled(False)  # Disable until conditions are met
 
+        self.export_button = QPushButton("Export as Standalone App", self)
+        self.layout.addWidget(self.export_button)
+        self.export_button.setEnabled(False)  # Disable until conditions are met
+
         self.install_button = QPushButton("Install NWJS Version", self)
         self.layout.addWidget(self.install_button)
 
@@ -64,6 +68,7 @@ class FolderPathApp(QMainWindow):
         self.uninstall_button.clicked.connect(self.uninstall_nwjs)
         self.select_button.clicked.connect(self.select_folder)
         self.start_game_button.clicked.connect(self.start_game)
+        self.export_button.clicked.connect(self.export_standalone_app)
 
         self.update_version_selector()
         self.load_settings()
@@ -144,11 +149,18 @@ class FolderPathApp(QMainWindow):
             return "..." + path[-(max_length - 3):]
         return path
 
+    def truncate_filename(self, filename, max_length=30):
+        if len(filename) > max_length:
+            return filename[:max_length // 2] + "..." + filename[-(max_length // 2):]
+        return filename
+
     def check_start_game_button(self):
         if self.last_selected_folder and self.version_selector.currentText():
             self.start_game_button.setEnabled(True)
+            self.export_button.setEnabled(True)
         else:
             self.start_game_button.setEnabled(False)
+            self.export_button.setEnabled(False)
 
     def check_package_json(self, folder_path):
         file_path = os.path.join(folder_path, 'package.json')
@@ -227,6 +239,80 @@ class FolderPathApp(QMainWindow):
         else:
             subprocess.Popen([nwjs_path, folder_path])
         logging.info("Game launched using NWJS version %s.", selected_version)
+
+    def export_standalone_app(self):
+        app_name, ok = self.get_app_name()
+        if not ok:
+            return
+
+        destination_folder = QFileDialog.getExistingDirectory(self, "Select Destination Folder")
+        if destination_folder:
+            try:
+                selected_version = self.version_selector.currentText()
+                if not selected_version:
+                    logging.error("No NWJS version selected.")
+                    QMessageBox.critical(self, "Error", "No NWJS version selected.")
+                    return
+
+                nwjs_dir = os.path.expanduser(f"~/Applications/RPGM-Launcher/{selected_version}")
+                nwjs_app_src = os.path.join(nwjs_dir, "nwjs.app")
+                nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
+
+                # Set up the progress dialog
+                total_files = sum([len(files) for _, _, files in os.walk(self.last_selected_folder)])
+                progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.show()
+
+                shutil.copytree(nwjs_app_src, nwjs_app_dst)
+
+                app_nw_dir = os.path.join(nwjs_app_dst, "Contents", "Resources", "app.nw")
+                os.makedirs(app_nw_dir, exist_ok=True)
+
+                current_file_count = 0
+                for root, _, files in os.walk(self.last_selected_folder):
+                    for file in files:
+                        s = os.path.join(root, file)
+                        d = os.path.join(app_nw_dir, os.path.relpath(s, self.last_selected_folder))
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        shutil.copy2(s, d)
+                        current_file_count += 1
+                        progress_dialog.setValue(current_file_count)
+                        progress_dialog.setLabelText(f"Copying over: {self.truncate_filename(file)}")
+                        QApplication.processEvents()
+                        if progress_dialog.wasCanceled():
+                            logging.info("Export canceled by user.")
+                            QMessageBox.information(self, "Export Canceled", "Export operation was canceled.")
+                            return
+
+                progress_dialog.close()
+                QMessageBox.information(self, "Export Complete", "Standalone app exported successfully.")
+                logging.info("Standalone app exported successfully to %s", destination_folder)
+            except Exception as e:
+                logging.error("Error exporting standalone app: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
+
+    def get_app_name(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Enter Application Name")
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel("Enter a name for the new application:", dialog)
+        layout.addWidget(label)
+
+        line_edit = QLineEdit(dialog)
+        line_edit.setPlaceholderText("nwjs")
+        layout.addWidget(line_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        result = dialog.exec()
+        app_name = line_edit.text().strip() if line_edit.text().strip() else "nwjs"
+        return app_name, result == QDialog.Accepted
 
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
