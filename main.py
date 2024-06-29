@@ -69,11 +69,15 @@ class FolderPathApp(QMainWindow):
                 last_version = settings.get('last_selected_version')
                 if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                     self.version_selector.setCurrentText(last_version)
+                self.last_selected_folder = settings.get('last_selected_folder', os.path.expanduser("~/Downloads"))
+        else:
+            self.last_selected_folder = os.path.expanduser("~/Downloads")
 
     def save_settings(self):
         settings = {
             'extract_game_en': self.extract_checkbox.isChecked(),
-            'last_selected_version': self.version_selector.currentText()
+            'last_selected_version': self.version_selector.currentText(),
+            'last_selected_folder': self.last_selected_folder
         }
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
@@ -103,8 +107,9 @@ class FolderPathApp(QMainWindow):
             self.select_button.setText("NWJS not installed")
 
     def select_folder(self):
-        folder_path = QFileDialog.getExistingDirectory(self, "Select Game Folder")
+        folder_path = QFileDialog.getExistingDirectory(self, "Select Game Folder", self.last_selected_folder)
         if folder_path:
+            self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
             if self.check_package_json(folder_path):
                 logging.info("Valid RPG Maker MV/MZ game folder.")
