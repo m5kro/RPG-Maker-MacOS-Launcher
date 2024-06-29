@@ -44,8 +44,15 @@ class FolderPathApp(QMainWindow):
         self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
         self.layout.addWidget(self.extract_checkbox)
 
+        self.selected_folder_label = QLabel("No folder selected", self)
+        self.layout.addWidget(self.selected_folder_label)
+
         self.select_button = QPushButton("Select Game Folder", self)
         self.layout.addWidget(self.select_button)
+
+        self.start_game_button = QPushButton("Start Game", self)
+        self.layout.addWidget(self.start_game_button)
+        self.start_game_button.setEnabled(False)  # Disable until conditions are met
 
         self.install_button = QPushButton("Install NWJS Version", self)
         self.layout.addWidget(self.install_button)
@@ -56,10 +63,12 @@ class FolderPathApp(QMainWindow):
         self.install_button.clicked.connect(self.install_nwjs)
         self.uninstall_button.clicked.connect(self.uninstall_nwjs)
         self.select_button.clicked.connect(self.select_folder)
+        self.start_game_button.clicked.connect(self.start_game)
 
         self.update_version_selector()
-        self.update_select_button_state()
         self.load_settings()
+        self.update_select_button_state()
+        self.check_start_game_button()
 
     def load_settings(self):
         if os.path.exists(self.SETTINGS_FILE):
@@ -70,8 +79,10 @@ class FolderPathApp(QMainWindow):
                 if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                     self.version_selector.setCurrentText(last_version)
                 self.last_selected_folder = settings.get('last_selected_folder', os.path.expanduser("~/Downloads"))
+                self.update_selected_folder_label()
         else:
             self.last_selected_folder = os.path.expanduser("~/Downloads")
+            self.update_selected_folder_label()
 
     def save_settings(self):
         settings = {
@@ -111,15 +122,33 @@ class FolderPathApp(QMainWindow):
         if folder_path:
             self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
+            self.update_selected_folder_label()
             if self.check_package_json(folder_path):
                 logging.info("Valid RPG Maker MV/MZ game folder.")
                 if self.extract_checkbox.isChecked():
                     self.check_and_unpack_game_en(folder_path)
-                self.launch_game(folder_path)
             else:
                 logging.error("No package.json found in the selected folder.")
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
         self.save_settings()
+        self.check_start_game_button()
+
+    def update_selected_folder_label(self):
+        if self.last_selected_folder:
+            self.selected_folder_label.setText(f"Selected Folder: {self.truncate_path(self.last_selected_folder)}")
+        else:
+            self.selected_folder_label.setText("No folder selected")
+
+    def truncate_path(self, path, max_length=50):
+        if len(path) > max_length:
+            return "..." + path[-(max_length - 3):]
+        return path
+
+    def check_start_game_button(self):
+        if self.last_selected_folder and self.version_selector.currentText():
+            self.start_game_button.setEnabled(True)
+        else:
+            self.start_game_button.setEnabled(False)
 
     def check_package_json(self, folder_path):
         file_path = os.path.join(folder_path, 'package.json')
@@ -172,6 +201,15 @@ class FolderPathApp(QMainWindow):
             logging.info("game_en.exe extracted and original file removed.")
         else:
             logging.error("game_en.exe not found in the directory")
+
+    def start_game(self):
+        folder_path = self.last_selected_folder
+        if not folder_path:
+            logging.error("No folder selected.")
+            QMessageBox.critical(self, "Error", "No folder selected.")
+            return
+
+        self.launch_game(folder_path)
 
     def launch_game(self, folder_path):
         selected_version = self.version_selector.currentText()
@@ -282,12 +320,7 @@ class FolderPathApp(QMainWindow):
             self.save_settings()
             self.update_version_selector()
             self.load_settings()
-            if self.check_nwjs_installed():
-                self.select_button.setEnabled(True)
-                self.select_button.setText("Select Game Folder")
-            else:
-                self.select_button.setEnabled(False)
-                self.select_button.setText("NWJS not installed")
+            self.check_start_game_button()
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
@@ -335,6 +368,7 @@ class FolderPathApp(QMainWindow):
                 self.update_version_selector()
                 self.load_settings()
                 self.update_select_button_state()
+                self.check_start_game_button()
                 logging.info("NWJS version %s uninstalled successfully.", version)
                 QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
             else:
