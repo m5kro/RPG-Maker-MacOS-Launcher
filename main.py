@@ -14,13 +14,19 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
+def check_appdir():
+    app_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
+    if not os.path.exists(app_dir):
+        os.makedirs(app_dir)
+    # Clear log file on startup
+    with open(LOG_FILE, 'w') as file:
+        file.write("")
+
 # Set up logging
-LOG_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/log.txt")
-logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+LOG_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/log.txt")
 
 class FolderPathApp(QMainWindow):
-    SETTINGS_FILE = os.path.expanduser("~/Applications/RPGM-Launcher/settings.json")
+    SETTINGS_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/settings.json")
 
     def __init__(self):
         super().__init__()
@@ -103,11 +109,11 @@ class FolderPathApp(QMainWindow):
         super().closeEvent(event)
 
     def check_nwjs_installed(self):
-        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         return os.path.exists(applications_dir) and any(os.path.isdir(os.path.join(applications_dir, v)) for v in os.listdir(applications_dir))
 
     def update_version_selector(self):
-        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         if os.path.exists(applications_dir):
             versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
             self.version_selector.clear()
@@ -230,7 +236,7 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No NWJS version selected.")
             return
 
-        nwjs_dir = os.path.expanduser(f"~/Applications/RPGM-Launcher/{selected_version}")
+        nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
         nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
 
         run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
@@ -254,7 +260,7 @@ class FolderPathApp(QMainWindow):
                     QMessageBox.critical(self, "Error", "No NWJS version selected.")
                     return
 
-                nwjs_dir = os.path.expanduser(f"~/Applications/RPGM-Launcher/{selected_version}")
+                nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
                 nwjs_app_src = os.path.join(nwjs_dir, "nwjs.app")
                 nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
 
@@ -316,7 +322,7 @@ class FolderPathApp(QMainWindow):
 
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
-        BASE_DIR = os.path.expanduser("~/Applications/RPGM-Launcher")
+        BASE_DIR = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
 
         def download_and_install(version, arch, use_rosetta=False):
             url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
@@ -442,7 +448,7 @@ class FolderPathApp(QMainWindow):
         return result == QDialog.Accepted
 
     def uninstall_nwjs(self):
-        applications_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
+        applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
 
         version, ok = self.show_version_selection_dialog(versions)
@@ -461,17 +467,13 @@ class FolderPathApp(QMainWindow):
                 logging.error("NWJS version %s not found.", version)
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
 
-def check_appdir():
-    app_dir = os.path.expanduser("~/Applications/RPGM-Launcher")
-    if not os.path.exists(app_dir):
-        os.makedirs(app_dir)
-    # Clear log file on startup
-    with open(LOG_FILE, 'w') as file:
-        file.write("")
-
 def main():
     check_appdir()
-    
+
+    # Set up logging after ensuring the directory exists
+    logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG, 
+                        format='%(asctime)s - %(levelname)s - %(message)s')
+
     # Redirect stdout and stderr to log file
     sys.stdout = open(LOG_FILE, 'a')
     sys.stderr = open(LOG_FILE, 'a')
