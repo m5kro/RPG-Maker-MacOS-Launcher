@@ -8,6 +8,7 @@ import shutil
 import platform
 import chardet
 import logging
+import re
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
@@ -50,6 +51,9 @@ class FolderPathApp(QMainWindow):
         self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
         self.layout.addWidget(self.extract_checkbox)
 
+        self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
+        self.layout.addWidget(self.cheat_menu_checkbox)
+
         self.selected_folder_label = QLabel("No folder selected", self)
         self.layout.addWidget(self.selected_folder_label)
 
@@ -86,6 +90,7 @@ class FolderPathApp(QMainWindow):
             with open(self.SETTINGS_FILE, 'r') as file:
                 settings = json.load(file)
                 self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
+                self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
                 last_version = settings.get('last_selected_version')
                 if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                     self.version_selector.setCurrentText(last_version)
@@ -98,6 +103,7 @@ class FolderPathApp(QMainWindow):
     def save_settings(self):
         settings = {
             'extract_game_en': self.extract_checkbox.isChecked(),
+            'add_cheat_menu': self.cheat_menu_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder
         }
@@ -227,6 +233,9 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
 
+        if self.cheat_menu_checkbox.isChecked():
+            self.add_cheat_menu(folder_path)
+
         self.launch_game(folder_path)
 
     def launch_game(self, folder_path):
@@ -264,6 +273,9 @@ class FolderPathApp(QMainWindow):
                 nwjs_app_src = os.path.join(nwjs_dir, "nwjs.app")
                 nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
 
+                if self.cheat_menu_checkbox.isChecked():
+                    self.add_cheat_menu(self.last_selected_folder)
+
                 # Set up the progress dialog
                 total_files = sum([len(files) for _, _, files in os.walk(self.last_selected_folder)])
                 progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
@@ -295,6 +307,10 @@ class FolderPathApp(QMainWindow):
                 progress_dialog.close()
                 QMessageBox.information(self, "Export Complete", "Standalone app exported successfully.")
                 logging.info("Standalone app exported successfully to %s", destination_folder)
+                
+                # Show the warning popup
+                QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
+
             except Exception as e:
                 logging.error("Error exporting standalone app: %s", str(e))
                 QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
@@ -466,6 +482,98 @@ class FolderPathApp(QMainWindow):
             else:
                 logging.error("NWJS version %s not found.", version)
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
+
+    def add_cheat_menu(self, folder_path):
+        www_folder_path = os.path.join(folder_path, "www")
+        cheat_menu_js_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js')
+        cheat_menu_css_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css')
+        if os.path.exists(www_folder_path) and os.path.isdir(www_folder_path):
+            logging.info("The 'www' folder exists in the selected folder.")
+            if self.modify_MV_main_js(os.path.join(www_folder_path, 'js', 'main.js')):
+                logging.info("RPG MV main.js has been patched with cheat menu.")
+                self.copy_cheat_files(www_folder_path)
+            else:
+                logging.info("RPG MV main.js has already been patched with cheat menu.")
+        else:
+            logging.warning("The 'www' folder does not exist in the selected folder.")
+            if self.modify_MZ_main_js(os.path.join(folder_path, 'js', 'main.js')):
+                logging.info("RPG MZ main.js has been patched with cheat menu.")
+                self.copy_cheat_files(folder_path)
+            else:
+                logging.info("RPG MZ main.js has already been patched with cheat menu.")
+
+    def copy_cheat_files(self, target_folder):
+        plugins_folder = os.path.join(target_folder, 'js', 'plugins')
+        os.makedirs(plugins_folder, exist_ok=True)
+        shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js'), plugins_folder)
+        shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css'), plugins_folder)
+        logging.info("Cheat_Menu.js and Cheat_Menu.css copied to %s", plugins_folder)
+
+    def modify_MV_main_js(self, file_path):
+        try:
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+        except Exception as e:
+            logging.error("Failed to read main.js: %s", str(e))
+            return False
+        
+        new_lines = [
+            "PluginManager._path= 'js/plugins/';\n",
+            "PluginManager.loadScript('Cheat_Menu.js');\n"
+        ]
+        
+        if any(line in lines for line in new_lines):
+            logging.info("Cheat menu lines already present in main.js")
+            return False
+        
+        for i, line in enumerate(lines):
+            if "PluginManager.setup($plugins);" in line:
+                lines.insert(i + 1, new_lines[0])
+                lines.insert(i + 2, new_lines[1])
+                break
+        
+        try:
+            with open(file_path, 'w') as file:
+                file.writelines(lines)
+            logging.info("main.js written successfully.")
+        except Exception as e:
+            logging.error("Failed to write main.js: %s", str(e))
+            return False
+        
+        return True
+
+    def modify_MZ_main_js(self, file_path):
+        new_url = 'js/plugins/Cheat_Menu.js'
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+        except Exception as e:
+            logging.error("Failed to read main.js: %s", str(e))
+            return False
+
+        script_urls_pattern = re.compile(r'const scriptUrls = \[(.*?)\];', re.DOTALL)
+        match = script_urls_pattern.search(content)
+
+        if match:
+            script_urls_content = match.group(1)
+            if new_url in script_urls_content:
+                logging.info("Cheat menu URL already present in main.js")
+                return False
+            else:
+                new_script_urls_content = f'    "{new_url}",\n' + script_urls_content
+                new_content = content[:match.start(1)] + new_script_urls_content + content[match.end(1):]
+
+                try:
+                    with open(file_path, 'w') as file:
+                        file.write(new_content)
+                    logging.info("main.js written successfully.")
+                except Exception as e:
+                    logging.error("Failed to write main.js: %s", str(e))
+                    return False
+                return True
+        else:
+            logging.error('scriptUrls array not found in main.js.')
+            return False
 
 def main():
     check_appdir()
