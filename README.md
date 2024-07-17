@@ -12,7 +12,7 @@ Native version (Specifically x64 or arm64 depending on your system):
 1. Clone the repo <br> `git clone https://github.com/m5kro/RPG-Maker-MV-MZ-MacOS-Launcher/`
 2. Setup the venv <br> `python3 -m venv RPGM-Launcher` <br> `source RPGM-Launcher/bin/activate`
 3. Install packages <br> `pip install PySide6-Essentials evbunpack requests chardet PyInstaller`
-4. Build the app <br> `pyinstaller --name "RPG-Maker-Launcher" --icon ./icon.icns --onedir --windowed main.py`
+4. Build the app <br> `pyinstaller --name "RPG-Maker-Launcher" --add-data Cheat_Menu.js:. --add-data Cheat_Menu.css:. --icon ./icon.icns --onedir --windowed main.py`
 5. Find the app in the dist folder
 6. Decativate venv <br> `deactivate`
 7. Clear the venv <br> `sudo rm -rf venv`
@@ -23,7 +23,7 @@ Universal2 version (works on both x64 or arm64):
 3. Setup the venv <br> `python3 -m venv RPGM-Launcher` <br> `source RPGM-Launcher/bin/activate`
 4. Install packages <br> `pip install PySide6-Essentials evbunpack requests PyInstaller`
 5. Replace charset-normalizer with chardet <br> `pip uninstall charset-normalizer` <br> `pip install chardet`
-6. Build the app <br> `pyinstaller --name "RPG-Maker-Launcher" --icon ./icon.icns --target-arch universal2 --onedir --windowed main.py`
+6. Build the app <br> `pyinstaller --name "RPG-Maker-Launcher" --add-data Cheat_Menu.js:. --add-data Cheat_Menu.css:. --icon ./icon.icns --target-arch universal2 --onedir --windowed main.py`
 7. Find the app in the dist folder
 8. Decativate venv <br> `deactivate`
 9. Clear the venv <br> `sudo rm -rf venv`
