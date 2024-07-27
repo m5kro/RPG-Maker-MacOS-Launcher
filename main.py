@@ -488,32 +488,13 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
 
     def open_save_editor(self):
-        save_editor_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/save-editor")
-        if not os.path.exists(save_editor_path):
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Install Save Editor")
-            layout = QVBoxLayout(dialog)
-
-            label = QLabel("The Save Editor is not installed. Do you want to install it now?", dialog)
-            layout.addWidget(label)
-
-            buttons = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No, dialog)
-            buttons.accepted.connect(dialog.accept)
-            buttons.rejected.connect(dialog.reject)
-            layout.addWidget(buttons)
-
-            result = dialog.exec()
-            if result == QDialog.Accepted:
-                self.install_save_editor()
-        else:
-            # debug for now, will launch save editor
-            QMessageBox.information(self, "Save Editor", "Save Editor is already installed.")
-            logging.info("Save Editor already installed.")
-
-    def install_save_editor(self):
-        # add the download logic here later
-        logging.info("Downloading and installing Save Editor...")
-        QMessageBox.information(self, "Install Save Editor", "Save Editor installation process started.")
+    save_editor_url = "https://saveeditor.online/"
+    try:
+        subprocess.run(["open", save_editor_url], check=True)
+        logging.info("Opened Save Editor website.")
+    except subprocess.CalledProcessError as e:
+        logging.error("Failed to open Save Editor website: %s", str(e))
+        QMessageBox.critical(self, "Error", f"Failed to open Save Editor website: {str(e)}")
 
     def add_cheat_menu(self, folder_path):
         www_folder_path = os.path.join(folder_path, "www")
