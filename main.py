@@ -48,14 +48,9 @@ class FolderPathApp(QMainWindow):
         version_layout.addWidget(self.version_selector)
         self.layout.addLayout(version_layout)
 
-        self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
-        self.layout.addWidget(self.extract_checkbox)
-
-        self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
-        self.layout.addWidget(self.cheat_menu_checkbox)
-
-        self.optimize_space_checkbox = QCheckBox("Optimize Space", self)
-        self.layout.addWidget(self.optimize_space_checkbox)
+        self.extract_checkbox = self.add_checkbox_with_learn_more("Extract game_en.exe", self.extract_checkbox_clicked)
+        self.cheat_menu_checkbox = self.add_checkbox_with_learn_more("Add Cheat Menu (Press [1] key to open)", self.cheat_menu_checkbox_clicked)
+        self.optimize_space_checkbox = self.add_checkbox_with_learn_more("Optimize Space", self.optimize_space_checkbox_clicked)
 
         self.selected_folder_label = QLabel("No folder selected", self)
         self.layout.addWidget(self.selected_folder_label)
@@ -91,6 +86,19 @@ class FolderPathApp(QMainWindow):
         self.load_settings()
         self.update_select_button_state()
         self.check_start_game_button()
+
+    def add_checkbox_with_learn_more(self, label_text, learn_more_clicked):
+        layout = QHBoxLayout()
+        checkbox = QCheckBox(label_text, self)
+        layout.addWidget(checkbox)
+
+        learn_more_button = QPushButton("Learn More", self)
+        layout.addWidget(learn_more_button)
+        learn_more_button.clicked.connect(learn_more_clicked)
+
+        self.layout.addLayout(layout)
+
+        return checkbox
 
     def load_settings(self):
         if os.path.exists(self.SETTINGS_FILE):
@@ -213,7 +221,7 @@ class FolderPathApp(QMainWindow):
             if game_exe:
                 break
 
-        if game_exe:
+        if (game_exe):
             extracted_dir = os.path.join(folder_path, "extracted")
             unpack_files(game_exe, extracted_dir, False, False)
 
@@ -639,6 +647,15 @@ class FolderPathApp(QMainWindow):
                         logging.info("Removed folder: %s", folder_path)
                     except Exception as e:
                         logging.error("Failed to remove folder (already optimized?) %s: %s", folder_path, str(e))
+
+    def extract_checkbox_clicked(self):
+        QMessageBox.information(self, "Learn More", "Extract game_en.exe: This uses the evbunpack tool to extract the game_en.exe file. This patches the gamefiles with the english version.")
+
+    def cheat_menu_checkbox_clicked(self):
+        QMessageBox.information(self, "Learn More", "Add Cheat Menu: This patches the game with a cheat menu that can be accessed by pressing the [1] key. Other instructions can be found in the when the cheat menu is opened.")
+
+    def optimize_space_checkbox_clicked(self):
+        QMessageBox.information(self, "Learn More", "Optimize Space: This removes the unnecessary windows version of nwjs from the game folder to save space.")
 
 def main():
     check_appdir()
