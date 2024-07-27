@@ -5,7 +5,8 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
+    target: x86_64-apple-darwin
 
     steps:
     - name: Checkout repository
