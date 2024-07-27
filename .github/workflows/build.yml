@@ -11,13 +11,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12.4'
-
     - name: Install dependencies and build
       run: |
+        curl -o python.pkg https://www.python.org/ftp/python/3.12.4/python-3.12.4-macos11.pkg
+        sudo installer -pkg python.pkg -target /
         git clone https://github.com/m5kro/RPG-Maker-MV-MZ-MacOS-Launcher/
         cd RPG-Maker-MV-MZ-MacOS-Launcher/
         python3 -m venv RPGM-Launcher
