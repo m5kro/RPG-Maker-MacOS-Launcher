@@ -22,6 +22,7 @@ jobs:
         cd RPG-Maker-MV-MZ-MacOS-Launcher/
         python3 -m venv RPGM-Launcher
         source RPGM-Launcher/bin/activate
+        pip freeze | xargs pip uninstall -y
         pip install PySide6-Essentials==6.7.1 evbunpack requests PyInstaller==6.8.0
         pip uninstall -y charset-normalizer
         pip install chardet
