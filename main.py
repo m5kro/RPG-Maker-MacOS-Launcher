@@ -488,13 +488,13 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
 
     def open_save_editor(self):
-    save_editor_url = "https://saveeditor.online/"
-    try:
-        subprocess.run(["open", save_editor_url], check=True)
-        logging.info("Opened Save Editor website.")
-    except subprocess.CalledProcessError as e:
-        logging.error("Failed to open Save Editor website: %s", str(e))
-        QMessageBox.critical(self, "Error", f"Failed to open Save Editor website: {str(e)}")
+        save_editor_url = "https://saveeditor.online/"
+        try:
+            subprocess.run(["open", save_editor_url], check=True)
+            logging.info("Opened Save Editor website.")
+        except subprocess.CalledProcessError as e:
+            logging.error("Failed to open Save Editor website: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to open Save Editor website: {str(e)}")
 
     def add_cheat_menu(self, folder_path):
         www_folder_path = os.path.join(folder_path, "www")
