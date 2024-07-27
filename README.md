@@ -29,4 +29,7 @@ Universal2 version (works on both x64 or arm64):
 9. Clear the venv <br> `sudo rm -rf venv`
 # Credits
 Credit to emerladCoder for cheat menu <br>
-https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin
+https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin <br>
+<br>
+Credit to SaveEditorOnline for the save editor <br>
+https://saveeditor.online <br>
