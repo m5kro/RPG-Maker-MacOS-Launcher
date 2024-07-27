@@ -16,10 +16,12 @@ jobs:
       with:
         python-version: '3.12.4'
 
-    - name: Install dependencies
+    - name: Install dependencies and build
       run: |
         git clone https://github.com/m5kro/RPG-Maker-MV-MZ-MacOS-Launcher/
         cd RPG-Maker-MV-MZ-MacOS-Launcher/
+        python3 -m venv RPGM-Launcher
+        source RPGM-Launcher/bin/activate
         pip install PySide6-Essentials evbunpack requests PyInstaller
         pip uninstall -y charset-normalizer
         pip install chardet
