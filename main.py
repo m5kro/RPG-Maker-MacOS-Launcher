@@ -54,6 +54,9 @@ class FolderPathApp(QMainWindow):
         self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
         self.layout.addWidget(self.cheat_menu_checkbox)
 
+        self.optimize_space_checkbox = QCheckBox("Optimize Space", self)
+        self.layout.addWidget(self.optimize_space_checkbox)
+
         self.selected_folder_label = QLabel("No folder selected", self)
         self.layout.addWidget(self.selected_folder_label)
 
@@ -95,6 +98,7 @@ class FolderPathApp(QMainWindow):
                 settings = json.load(file)
                 self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
                 self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
+                self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
                 last_version = settings.get('last_selected_version')
                 if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                     self.version_selector.setCurrentText(last_version)
@@ -108,6 +112,7 @@ class FolderPathApp(QMainWindow):
         settings = {
             'extract_game_en': self.extract_checkbox.isChecked(),
             'add_cheat_menu': self.cheat_menu_checkbox.isChecked(),
+            'optimize_space': self.optimize_space_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder
         }
@@ -237,6 +242,9 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
 
+        if self.optimize_space_checkbox.isChecked():
+            self.optimize_space()
+
         if self.cheat_menu_checkbox.isChecked():
             self.add_cheat_menu(folder_path)
 
@@ -279,6 +287,9 @@ class FolderPathApp(QMainWindow):
 
                 if self.cheat_menu_checkbox.isChecked():
                     self.add_cheat_menu(self.last_selected_folder)
+
+                if self.optimize_space_checkbox.isChecked():
+                    self.optimize_space()
 
                 # Set up the progress dialog
                 total_files = sum([len(files) for _, _, files in os.walk(self.last_selected_folder)])
@@ -597,6 +608,10 @@ class FolderPathApp(QMainWindow):
         else:
             logging.error('scriptUrls array not found in main.js.')
             return False
+
+    def optimize_space(self):
+        # to be added later
+        pass
 
 def main():
     check_appdir()
