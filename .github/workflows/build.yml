@@ -1,1 +1,32 @@
-name: build
+name: Build RPG Maker Launcher
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12.4' 
+
+    - name: Install dependencies
+      run: |
+        git clone https://github.com/m5kro/RPG-Maker-MV-MZ-MacOS-Launcher/
+        cd RPG-Maker-MV-MZ-MacOS-Launcher/
+        pip install PySide6-Essentials evbunpack requests PyInstaller
+        pip uninstall -y charset-normalizer
+        pip install chardet
+        pyinstaller --name "RPG-Maker-Launcher" --add-data Cheat_Menu.js:. --add-data Cheat_Menu.css:. --icon ./icon.icns --target-arch universal2 --onedir --windowed main.py
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: RPG-Maker-Launcher
+        path: RPG-Maker-MV-MZ-MacOS-Launcher/dist/
