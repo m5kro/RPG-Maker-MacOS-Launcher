@@ -489,12 +489,22 @@ class FolderPathApp(QMainWindow):
 
     def open_save_editor(self):
         save_editor_url = "https://saveeditor.online/"
+        www_save_folder = os.path.join(self.last_selected_folder, "www", "save")
+        save_folder = os.path.join(self.last_selected_folder, "save")
+
         try:
             subprocess.run(["open", save_editor_url], check=True)
             logging.info("Opened Save Editor website.")
+
+            if os.path.exists(www_save_folder):
+                subprocess.run(["open", www_save_folder], check=True)
+                logging.info(f"Opened save folder: {www_save_folder}")
+            elif os.path.exists(save_folder):
+                subprocess.run(["open", save_folder], check=True)
+                logging.info(f"Opened save folder: {save_folder}")
         except subprocess.CalledProcessError as e:
-            logging.error("Failed to open Save Editor website: %s", str(e))
-            QMessageBox.critical(self, "Error", f"Failed to open Save Editor website: {str(e)}")
+            logging.error(f"Failed to open: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to open: {str(e)}")
 
     def add_cheat_menu(self, folder_path):
         www_folder_path = os.path.join(folder_path, "www")
