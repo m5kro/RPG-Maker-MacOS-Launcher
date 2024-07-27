@@ -12,7 +12,7 @@ import re
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit)
+                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
 def check_appdir():
@@ -40,6 +40,10 @@ class FolderPathApp(QMainWindow):
 
         self.layout = QVBoxLayout(self.central_widget)
 
+        self.instructions_button = QPushButton("Instructions", self)
+        self.layout.addWidget(self.instructions_button)
+        self.instructions_button.clicked.connect(self.show_instructions)
+
         version_layout = QHBoxLayout()
         self.version_label = QLabel("NWJS version:", self)
         version_layout.addWidget(self.version_label)
@@ -48,9 +52,14 @@ class FolderPathApp(QMainWindow):
         version_layout.addWidget(self.version_selector)
         self.layout.addLayout(version_layout)
 
-        self.extract_checkbox = self.add_checkbox_with_learn_more("Extract game_en.exe", self.extract_checkbox_clicked)
-        self.cheat_menu_checkbox = self.add_checkbox_with_learn_more("Add Cheat Menu (Press [1] key to open)", self.cheat_menu_checkbox_clicked)
-        self.optimize_space_checkbox = self.add_checkbox_with_learn_more("Optimize Space", self.optimize_space_checkbox_clicked)
+        self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
+        self.layout.addWidget(self.extract_checkbox)
+
+        self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
+        self.layout.addWidget(self.cheat_menu_checkbox)
+
+        self.optimize_space_checkbox = QCheckBox("Optimize Space", self)
+        self.layout.addWidget(self.optimize_space_checkbox)
 
         self.selected_folder_label = QLabel("No folder selected", self)
         self.layout.addWidget(self.selected_folder_label)
@@ -87,18 +96,35 @@ class FolderPathApp(QMainWindow):
         self.update_select_button_state()
         self.check_start_game_button()
 
-    def add_checkbox_with_learn_more(self, label_text, learn_more_clicked):
-        layout = QHBoxLayout()
-        checkbox = QCheckBox(label_text, self)
-        layout.addWidget(checkbox)
+    def show_instructions(self):
+        instructions = (
+            "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
+            "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
+            "3. Check Options:\n"
+            "   - 'Extract game_en.exe': Extracts the file and patches the game with the English version.\n"
+            "   - 'Add Cheat Menu': Patch the game with a cheat menu (Press [1] key while in game).\n"
+            "   - 'Optimize Space': Optimize the game folder size by removing the Windows version of NWJS.\n\n"
+            "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
+            "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
+            "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
+            "7. Click 'Uninstall NWJS Version' to remove an installed version of NWJS."
+        )
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Instructions")
+        dialog.resize(650, 350)
+        layout = QVBoxLayout(dialog)
 
-        learn_more_button = QPushButton("Learn More", self)
-        layout.addWidget(learn_more_button)
-        learn_more_button.clicked.connect(learn_more_clicked)
+        text_edit = QPlainTextEdit(dialog)
+        text_edit.setPlainText(instructions)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
 
-        self.layout.addLayout(layout)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok, dialog)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
 
-        return checkbox
+        dialog.exec()
 
     def load_settings(self):
         if os.path.exists(self.SETTINGS_FILE):
@@ -647,15 +673,6 @@ class FolderPathApp(QMainWindow):
                         logging.info("Removed folder: %s", folder_path)
                     except Exception as e:
                         logging.error("Failed to remove folder (already optimized?) %s: %s", folder_path, str(e))
-
-    def extract_checkbox_clicked(self):
-        QMessageBox.information(self, "Learn More", "Extract game_en.exe: This uses the evbunpack tool to extract the game_en.exe file. This patches the gamefiles with the english version.")
-
-    def cheat_menu_checkbox_clicked(self):
-        QMessageBox.information(self, "Learn More", "Add Cheat Menu: This patches the game with a cheat menu that can be accessed by pressing the [1] key. Other instructions can be found in the when the cheat menu is opened.")
-
-    def optimize_space_checkbox_clicked(self):
-        QMessageBox.information(self, "Learn More", "Optimize Space: This removes the unnecessary windows version of nwjs from the game folder to save space.")
 
 def main():
     check_appdir()
