@@ -612,8 +612,33 @@ class FolderPathApp(QMainWindow):
             return False
 
     def optimize_space(self):
-        # to be added later
-        pass
+        files_to_remove = [
+            "credits.html", "d3dcompiler_47.dll", "ffmpeg.dll", "icudtl.dat", "libEGL.dll",
+            "libGLESv2.dll", "node.dll", "nw.dll", "nw_100_percent.pak", "nw_200_percent.pak",
+            "nw_elf.dll", "resources.pak", "v8_context_snapshot.bin", "vk_swiftshader.dll",
+            "vk_swiftshader_icd.json", "vulkan-1.dll"
+        ]
+        
+        folders_to_remove = ["locales", "swiftshader"]
+        
+        for root, dirs, files in os.walk(self.last_selected_folder):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file in files_to_remove or file.endswith(".exe"):
+                    try:
+                        os.remove(file_path)
+                        logging.info("Removed file: %s", file_path)
+                    except Exception as e:
+                        logging.error("Failed to remove file (already optimized?) %s: %s", file_path, str(e))
+            
+            for folder in dirs:
+                folder_path = os.path.join(root, folder)
+                if folder in folders_to_remove:
+                    try:
+                        shutil.rmtree(folder_path)
+                        logging.info("Removed folder: %s", folder_path)
+                    except Exception as e:
+                        logging.error("Failed to remove folder (already optimized?) %s: %s", folder_path, str(e))
 
 def main():
     check_appdir()
