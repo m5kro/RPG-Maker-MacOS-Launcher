@@ -149,11 +149,7 @@ class FolderPathApp(QMainWindow):
             self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
             self.update_selected_folder_label()
-            if self.check_package_json(folder_path):
-                logging.info("Valid RPG Maker MV/MZ game folder.")
-                if self.extract_checkbox.isChecked():
-                    self.check_and_unpack_game_en(folder_path)
-            else:
+            if not self.check_package_json(folder_path):
                 logging.error("No package.json found in the selected folder.")
                 QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
         self.save_settings()
@@ -242,6 +238,9 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
 
+        if self.extract_checkbox.isChecked():
+            self.check_and_unpack_game_en(folder_path)
+
         if self.optimize_space_checkbox.isChecked():
             self.optimize_space()
 
@@ -284,6 +283,9 @@ class FolderPathApp(QMainWindow):
                 nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
                 nwjs_app_src = os.path.join(nwjs_dir, "nwjs.app")
                 nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
+
+                if self.extract_checkbox.isChecked():
+                    self.check_and_unpack_game_en(self.last_selected_folder)
 
                 if self.cheat_menu_checkbox.isChecked():
                     self.add_cheat_menu(self.last_selected_folder)
