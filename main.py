@@ -84,12 +84,16 @@ class FolderPathApp(QMainWindow):
         self.uninstall_button = QPushButton("Uninstall NWJS Version", self)
         self.layout.addWidget(self.uninstall_button)
 
+        self.open_log_button = QPushButton("Open Log", self)
+        self.layout.addWidget(self.open_log_button)
+
         self.install_button.clicked.connect(self.install_nwjs)
         self.uninstall_button.clicked.connect(self.uninstall_nwjs)
         self.select_button.clicked.connect(self.select_folder)
         self.start_game_button.clicked.connect(self.start_game)
         self.export_button.clicked.connect(self.export_standalone_app)
         self.open_save_editor_button.clicked.connect(self.open_save_editor)
+        self.open_log_button.clicked.connect(self.open_log)
 
         self.update_version_selector()
         self.load_settings()
@@ -247,7 +251,7 @@ class FolderPathApp(QMainWindow):
             if game_exe:
                 break
 
-        if (game_exe):
+        if game_exe:
             extracted_dir = os.path.join(folder_path, "extracted")
             unpack_files(game_exe, extracted_dir, False, False)
 
@@ -673,6 +677,31 @@ class FolderPathApp(QMainWindow):
                         logging.info("Removed folder: %s", folder_path)
                     except Exception as e:
                         logging.error("Failed to remove folder (already optimized?) %s: %s", folder_path, str(e))
+
+    def open_log(self):
+        try:
+            with open(LOG_FILE, 'r') as file:
+                log_contents = file.read()
+        except Exception as e:
+            logging.error("Failed to read log file: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to read log file: {str(e)}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Log Contents")
+        dialog.resize(600, 400)
+        layout = QVBoxLayout(dialog)
+
+        text_edit = QPlainTextEdit(dialog)
+        text_edit.setPlainText(log_contents)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok, dialog)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
 
 def main():
     check_appdir()
