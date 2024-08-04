@@ -1,6 +1,22 @@
+# Announcement
+It is with great sadness that I must announce that my old 2016 macbook pro has finally kicked the bucket. It was already showing signs of failure for a few weeks and I hoped it would at least last till I added mkxp-z support to the app. But alas, it could not make it. I've purchased a refurbished Intel mac mini to continue development and it'll arrive in about a week.
+
+My wallet is feeling a lot lighter now. Donations to help recoup the costs will be greatly appreciated. (donation stuff is below)
 # RPG-Maker-MV-MZ-MacOS-Launcher
 A launcher to natively play RPG maker MV and MZ games on MacOS!<br>
-<br>
+Plan/TODO (no particular order)
+1. ✅ Add nwjs version selected<br>
+2. ✅ Toggle for game_en.exe extractor (if for some reason you want to play in japanese?!)<br>
+3. ✅ Toggle for cheat menu<br>
+4. ✅ Better logging incase something goes wrong<br>
+5. ✅ Remember last opened game<br>
+6. ❌ Look in directory(s) for a bunch of games<br>
+7. ✅ Export game as standalone app<br>
+8. ❌ Better looking UI<br>
+9. ✅ Better looking Icon<br>
+10. ✅ Save editor<br>
+11. ❌ mkxp-z (support for Rpg Maker XP / VX / VX Ace)<br>
+
 # How it works
 1. Downloads nwjs
 2. Checks package.json
@@ -27,6 +43,12 @@ Universal2 version (works on both x64 or arm64):
 7. Find the app in the dist folder
 8. Decativate venv <br> `deactivate`
 9. Clear the venv <br> `sudo rm -rf venv`
+# Donations
+Bitcoin Wallet: <br>
+bc1qup498tqtm55zav2ckjyhlq8qnd0xmwjnvs7fa3<br>
+<br>
+Bitcoin Lightning Wallet (not an email address!):<br>
+m5kro@speed.app
 # Credits
 Credit to emerladCoder for cheat menu <br>
 https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin <br>
