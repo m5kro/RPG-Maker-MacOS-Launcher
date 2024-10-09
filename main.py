@@ -44,6 +44,10 @@ class FolderPathApp(QMainWindow):
         self.layout.addWidget(self.instructions_button)
         self.instructions_button.clicked.connect(self.show_instructions)
 
+        self.credits_button = QPushButton("Credits", self)
+        self.layout.addWidget(self.credits_button)
+        self.credits_button.clicked.connect(self.show_credits)
+
         version_layout = QHBoxLayout()
         self.version_label = QLabel("NWJS version:", self)
         version_layout.addWidget(self.version_label)
@@ -102,6 +106,7 @@ class FolderPathApp(QMainWindow):
 
     def show_instructions(self):
         instructions = (
+            "RPG Maker MV and MZ games:\n\n"
             "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
             "3. Check Options:\n"
@@ -111,12 +116,42 @@ class FolderPathApp(QMainWindow):
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
             "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
             "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
-            "7. Click 'Uninstall NWJS Version' to remove an installed version of NWJS."
+            "7. Click 'Uninstall NWJS Version' to remove an installed version of NWJS.\n"
+            "_____________________________________________________________________________\n"
+            "RPG Maker XP, VX, and VX Ace games:\n\n"
+            "1. Move game folder to anywhere but the 'Downloads' folder.\n\n"
+            "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
+            "3. Click 'Start Game' to launch the game using MKXP-Z. You may be prompted to install MKXP-Z."
         )
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 350)
+        dialog.resize(650, 525)
+        layout = QVBoxLayout(dialog)
+
+        text_edit = QPlainTextEdit(dialog)
+        text_edit.setPlainText(instructions)
+        text_edit.setReadOnly(True)
+        layout.addWidget(text_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok, dialog)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
+
+    def show_credits(self):
+        instructions = (
+            "Special Thanks To:\n\n"
+            "lecrolonk - Donator\n\n"
+            "mkxp-z maintainers - MKXP-Z\n\n"
+            "Andmi Kuzgri - Save Editor Online\n\n"
+            "emerladCoder - Cheat Menu Plugin"
+        )
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Instructions")
+        dialog.resize(650, 250)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
@@ -165,6 +200,15 @@ class FolderPathApp(QMainWindow):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         return os.path.exists(applications_dir) and any(os.path.isdir(os.path.join(applications_dir, v)) for v in os.listdir(applications_dir))
 
+    def check_mkxpz_installed(self):
+        mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
+        if os.path.exists(mkxpz_path):
+            logging.info("MKXPZ is installed.")
+            return True
+        else:
+            logging.warning("MKXPZ is not installed.")
+            return False
+
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         if os.path.exists(applications_dir):
@@ -186,11 +230,15 @@ class FolderPathApp(QMainWindow):
         if folder_path:
             self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
-            self.update_selected_folder_label()
             if not self.check_package_json(folder_path):
                 logging.error("No package.json found in the selected folder.")
-                QMessageBox.critical(self, "Error", "No package.json found in the selected folder.")
+                if self.check_ini_files(folder_path):
+                    logging.info(".ini file(s) found in the folder.")
+                else:
+                    logging.error("No .ini files found in the selected folder.")
+                    QMessageBox.critical(self, "Error", "No package.json or .ini files found in the selected folder.")
         self.save_settings()
+        self.update_selected_folder_label()
         self.check_start_game_button()
 
     def update_selected_folder_label(self):
@@ -240,6 +288,13 @@ class FolderPathApp(QMainWindow):
             logging.error("File does not exist.")
             return False
 
+    def check_ini_files(self, folder_path):
+        files = os.listdir(folder_path)
+        for file in files:
+            if file.endswith('.ini'):
+                return True
+        return False
+
     def check_and_unpack_game_en(self, folder_path):
         game_exe = None
 
@@ -276,18 +331,27 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
 
-        if self.extract_checkbox.isChecked():
-            self.check_and_unpack_game_en(folder_path)
+        if self.check_package_json(folder_path):
+            logging.info("Launching game using NWJS.")
 
-        if self.optimize_space_checkbox.isChecked():
-            self.optimize_space()
+            if self.extract_checkbox.isChecked():
+                self.check_and_unpack_game_en(folder_path)
 
-        if self.cheat_menu_checkbox.isChecked():
-            self.add_cheat_menu(folder_path)
+            if self.optimize_space_checkbox.isChecked():
+                self.optimize_space()
 
-        self.launch_game(folder_path)
+            if self.cheat_menu_checkbox.isChecked():
+                self.add_cheat_menu(folder_path)
+            
+            self.launch_nwjs_game(folder_path)
+        elif self.check_ini_files(folder_path):
+            logging.info("Launching game using MKXPZ.")
+            self.launch_mkxpz_game(folder_path)
+        else:
+            logging.error("Neither package.json nor .ini files found in the folder.")
+            QMessageBox.critical(self, "Error", "No valid game file (package.json or .ini) found in the selected folder.")
 
-    def launch_game(self, folder_path):
+    def launch_nwjs_game(self, folder_path):
         selected_version = self.version_selector.currentText()
         if not selected_version:
             logging.error("No NWJS version selected.")
@@ -303,6 +367,53 @@ class FolderPathApp(QMainWindow):
         else:
             subprocess.Popen([nwjs_path, folder_path])
         logging.info("Game launched using NWJS version %s.", selected_version)
+
+    def launch_mkxpz_game(self, folder_path):
+        if self.check_mkxpz_installed():
+            mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
+            
+            if os.path.exists(mkxpz_json_path):
+                try:
+                    with open(mkxpz_json_path, 'rb') as file:
+                        raw_data = file.read()
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+
+                    with open(mkxpz_json_path, 'r', encoding=encoding) as file:
+                        mkxp_config = json.load(file)
+
+                    mkxp_config["gameFolder"] = folder_path
+
+                    with open(mkxpz_json_path, 'w', encoding=encoding) as file:
+                        json.dump(mkxp_config, file, indent=4)
+
+                    logging.info("Updated mkxp.json with gameFolder: %s", folder_path)
+                except Exception as e:
+                    logging.error("Failed to update mkxp.json: %s", str(e))
+                    QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
+                    return
+            else:
+                logging.error("mkxp.json file not found at %s", mkxpz_json_path)
+                QMessageBox.critical(self, "Error", "mkxp.json file not found. MKXPZ launch aborted.")
+                return
+
+            mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
+
+            try:
+                subprocess.Popen([mkxpz_path, folder_path])
+                logging.info("MKXPZ game launched from folder: %s", folder_path)
+            except Exception as e:
+                logging.error("Failed to launch MKXPZ: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to launch MKXPZ: {str(e)}")
+        else:
+            install_response = QMessageBox.question(self, "MKXPZ Not Installed", 
+                                                    "MKXPZ is not installed. Would you like to install it now?", 
+                                                    QMessageBox.Yes | QMessageBox.No)
+            if install_response == QMessageBox.Yes:
+                self.install_mkxpz()
+            else:
+                logging.info("MKXPZ installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "MKXPZ installation was canceled.")
 
     def export_standalone_app(self):
         app_name, ok = self.get_app_name()
@@ -331,7 +442,6 @@ class FolderPathApp(QMainWindow):
                 if self.optimize_space_checkbox.isChecked():
                     self.optimize_space()
 
-                # Set up the progress dialog
                 total_files = sum([len(files) for _, _, files in os.walk(self.last_selected_folder)])
                 progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
                 progress_dialog.setWindowModality(Qt.WindowModal)
@@ -362,8 +472,7 @@ class FolderPathApp(QMainWindow):
                 progress_dialog.close()
                 QMessageBox.information(self, "Export Complete", "Standalone app exported successfully.")
                 logging.info("Standalone app exported successfully to %s", destination_folder)
-                
-                # Show the warning popup
+
                 QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
 
             except Exception as e:
@@ -484,6 +593,75 @@ class FolderPathApp(QMainWindow):
             self.update_version_selector()
             self.load_settings()
             self.check_start_game_button()
+
+    def install_mkxpz(self):
+        URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/Z-universal.zip"
+        zip_file_path = "/tmp/Z-universal.zip"
+        target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
+
+        try:
+            response = requests.get(URL, stream=True)
+            if response.status_code != 200:
+                logging.error("Failed to download MKXPZ.")
+                QMessageBox.critical(self, "Error", "Failed to download MKXPZ.")
+                return
+
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            chunk_size = 1024  # 1KB
+
+            progress_dialog = QProgressDialog("Downloading MKXPZ...", "Cancel", 0, total_size, self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            start_time = QDateTime.currentDateTime()
+            canceled = False
+
+            with open(zip_file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_dialog.setValue(downloaded_size)
+
+                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                                    f"Speed: {download_speed:.2f} MB/s")
+
+                        if progress_dialog.wasCanceled():
+                            canceled = True
+                            logging.info("Download canceled by user.")
+                            break
+
+            if canceled:
+                os.remove(zip_file_path)
+                QMessageBox.information(self, "MKXPZ Installation", "MKXPZ installation canceled.")
+                return
+
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            logging.info("MKXPZ extracted successfully to %s", target_dir)
+
+            os.remove(zip_file_path)
+
+            mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
+            try:
+                subprocess.run(["chmod", "+x", mkxpz_executable_path], check=True)
+                logging.info("Set executable permissions for %s", mkxpz_executable_path)
+            except subprocess.CalledProcessError as e:
+                logging.error("Failed to set executable permissions: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to set executable permissions: {str(e)}")
+                return
+
+            progress_dialog.close()
+            QMessageBox.information(self, "MKXPZ Installation", "MKXPZ installed successfully.")
+
+        except Exception as e:
+            logging.error("Error installing MKXPZ: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to install MKXPZ: {str(e)}")
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)

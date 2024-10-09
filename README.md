@@ -1,7 +1,3 @@
-# Announcement
-It is with great sadness that I must announce that my old 2016 macbook pro has finally kicked the bucket. It was already showing signs of failure for a few weeks and I hoped it would at least last till I added mkxp-z support to the app. But alas, it could not make it. I've purchased a refurbished Intel mac mini to continue development and it'll arrive in about a week.
-
-My wallet is feeling a lot lighter now. Donations to help recoup the costs will be greatly appreciated. (donation stuff is below)
 # RPG-Maker-MV-MZ-MacOS-Launcher
 A launcher to natively play RPG maker MV and MZ games on MacOS!<br>
 Plan/TODO (no particular order)
@@ -44,12 +40,21 @@ Universal2 version (works on both x64 or arm64):
 8. Decativate venv <br> `deactivate`
 9. Clear the venv <br> `sudo rm -rf venv`
 # Donations
-Bitcoin Wallet: <br>
+Bitcoin Wallet:<br>
 bc1qup498tqtm55zav2ckjyhlq8qnd0xmwjnvs7fa3<br>
 <br>
 Bitcoin Lightning Wallet (not an email address!):<br>
-m5kro@speed.app
-# Credits
+m5kro@speed.app<br>
+<br>
+Ethereum Wallet:<br>
+0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
+# Credits and Special Thanks
+Donators:<br>
+lecrolonk <br>
+<br>
+Credit to mkxp-z maintainers for mkxp-z <br>
+https://github.com/mkxp-z/mkxp-z <br>
+<br>
 Credit to emerladCoder for cheat menu <br>
 https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin <br>
 <br>
