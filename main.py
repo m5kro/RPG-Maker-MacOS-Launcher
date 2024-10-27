@@ -591,7 +591,7 @@ class FolderPathApp(QMainWindow):
         layout.addWidget(label)
 
         line_edit = QLineEdit(dialog)
-        line_edit.setPlaceholderText("nwjs")
+        line_edit.setPlaceholderText("Game Name")
         layout.addWidget(line_edit)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
@@ -600,7 +600,7 @@ class FolderPathApp(QMainWindow):
         layout.addWidget(buttons)
 
         result = dialog.exec()
-        app_name = line_edit.text().strip() if line_edit.text().strip() else "nwjs"
+        app_name = line_edit.text().strip() if line_edit.text().strip() else "Game Name"
         return app_name, result == QDialog.Accepted
 
     def install_nwjs(self):
