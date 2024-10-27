@@ -1,5 +1,5 @@
-# RPG-Maker-MV-MZ-MacOS-Launcher
-A launcher to natively play RPG maker MV and MZ games on MacOS!<br>
+# RPG-Maker-MacOS-Launcher
+A launcher to natively play RPG maker MV, MZ, XP, VX, and VX Ace games on MacOS!<br>
 Plan/TODO (no particular order)
 1. ✅ Add nwjs version selected<br>
 2. ✅ Toggle for game_en.exe extractor (if for some reason you want to play in japanese?!)<br>
@@ -15,10 +15,10 @@ Plan/TODO (no particular order)
 12. ❌ Export non MV or MZ game as standalone app<br>
 
 # How it works
-1. Downloads nwjs
-2. Checks package.json
+1. Downloads nwjs and mkxp-z
+2. Checks package.json or Game.ini
 3. Unpacks game_en.exe if it exists
-4. Points nwjs to directory
+4. Points nwjs or mkxp-z to directory
 5. Launches game
 # How to build
 Native version (Specifically x64 or arm64 depending on your system):
