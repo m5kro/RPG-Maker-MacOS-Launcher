@@ -202,17 +202,42 @@ class FolderPathApp(QMainWindow):
 
     def check_mkxpz_installed(self):
         mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
-        if os.path.exists(mkxpz_path):
-            logging.info("MKXPZ is installed.")
-            return True
-        else:
-            logging.warning("MKXPZ is not installed.")
-            return False
+        if not os.path.exists(mkxpz_path):
+            install_response = QMessageBox.question(self, "MKXPZ Not Installed", 
+                                                    "MKXPZ is not installed. Would you like to install it now?", 
+                                                    QMessageBox.Yes | QMessageBox.No)
+            if install_response == QMessageBox.Yes:
+                self.install_mkxpz()
+                return True
+            else:
+                logging.info("MKXPZ installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "MKXPZ installation was canceled.")
+                return False
+        return True
+    
+    def check_RTP_installed(self):
+        rtp_folder = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP")
+        if not os.path.exists(rtp_folder):
+            install_response = QMessageBox.question(self, "RTP Not Found", 
+                                                    "RTP is required but not found. Would you like to install it now?", 
+                                                    QMessageBox.Yes | QMessageBox.No)
+            if install_response == QMessageBox.Yes:
+                self.install_RTP()
+                return True
+            else:
+                logging.info("RTP installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "RTP installation was canceled.")
+                return False
+        return True
 
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         if os.path.exists(applications_dir):
-            versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
+            # Only include directories that start with 'v'
+            versions = [
+                v for v in os.listdir(applications_dir) 
+                if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")
+            ]
             self.version_selector.clear()
             self.version_selector.addItems(versions)
         self.update_select_button_state()
@@ -230,13 +255,14 @@ class FolderPathApp(QMainWindow):
         if folder_path:
             self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
+            
             if not self.check_package_json(folder_path):
                 logging.error("No package.json found in the selected folder.")
-                if self.check_ini_files(folder_path):
-                    logging.info(".ini file(s) found in the folder.")
+                if self.check_game_ini(folder_path):
+                    logging.info("Game.ini file found in the folder.")
                 else:
-                    logging.error("No .ini files found in the selected folder.")
-                    QMessageBox.critical(self, "Error", "No package.json or .ini files found in the selected folder.")
+                    logging.error("No Game.ini file found in the selected folder.")
+                    QMessageBox.critical(self, "Error", "No package.json or Game.ini file found in the selected folder.")
         self.save_settings()
         self.update_selected_folder_label()
         self.check_start_game_button()
@@ -288,12 +314,19 @@ class FolderPathApp(QMainWindow):
             logging.error("File does not exist.")
             return False
 
-    def check_ini_files(self, folder_path):
-        files = os.listdir(folder_path)
-        for file in files:
-            if file.endswith('.ini'):
-                return True
-        return False
+    def check_game_ini(self, folder_path):
+        game_ini_path = os.path.join(folder_path, "Game.ini")
+        return os.path.exists(game_ini_path)
+    
+    def get_rtp_value(self, folder_path):
+        game_ini_path = os.path.join(folder_path, "Game.ini")
+        with open(game_ini_path, 'r') as file:
+            for line in file:
+                match = re.match(r"RTP=(.*)", line)
+                if match:
+                    return match.group(1).strip()  # Returns the value after '='
+        logging.warning("RTP value not found in Game.ini. Assuming Standard RTP (RPG XP).")
+        return "Standard"
 
     def check_and_unpack_game_en(self, folder_path):
         game_exe = None
@@ -344,7 +377,7 @@ class FolderPathApp(QMainWindow):
                 self.add_cheat_menu(folder_path)
             
             self.launch_nwjs_game(folder_path)
-        elif self.check_ini_files(folder_path):
+        elif self.check_game_ini(folder_path):
             logging.info("Launching game using MKXPZ.")
             self.launch_mkxpz_game(folder_path)
         else:
@@ -369,51 +402,46 @@ class FolderPathApp(QMainWindow):
         logging.info("Game launched using NWJS version %s.", selected_version)
 
     def launch_mkxpz_game(self, folder_path):
-        if self.check_mkxpz_installed():
-            mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
-            
-            if os.path.exists(mkxpz_json_path):
-                try:
-                    with open(mkxpz_json_path, 'rb') as file:
-                        raw_data = file.read()
-                        result = chardet.detect(raw_data)
-                        encoding = result['encoding']
+        if not self.check_mkxpz_installed() or not self.check_RTP_installed():
+            return
 
-                    with open(mkxpz_json_path, 'r', encoding=encoding) as file:
-                        mkxp_config = json.load(file)
-
-                    mkxp_config["gameFolder"] = folder_path
-
-                    with open(mkxpz_json_path, 'w', encoding=encoding) as file:
-                        json.dump(mkxp_config, file, indent=4)
-
-                    logging.info("Updated mkxp.json with gameFolder: %s", folder_path)
-                except Exception as e:
-                    logging.error("Failed to update mkxp.json: %s", str(e))
-                    QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
-                    return
-            else:
-                logging.error("mkxp.json file not found at %s", mkxpz_json_path)
-                QMessageBox.critical(self, "Error", "mkxp.json file not found. MKXPZ launch aborted.")
-                return
-
-            mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
-
+        mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
+        if os.path.exists(mkxpz_json_path):
             try:
-                subprocess.Popen([mkxpz_path, folder_path])
-                logging.info("MKXPZ game launched from folder: %s", folder_path)
+                with open(mkxpz_json_path, 'rb') as file:
+                    raw_data = file.read()
+                    result = chardet.detect(raw_data)
+                    encoding = result['encoding']
+
+                with open(mkxpz_json_path, 'r', encoding=encoding) as file:
+                    mkxp_config = json.load(file)
+                
+                mkxp_config["gameFolder"] = folder_path
+
+                rtp_value = self.get_rtp_value(folder_path)
+                rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+                mkxp_config["RTP"] = [rtp_path]
+
+                with open(mkxpz_json_path, 'w', encoding=encoding) as file:
+                    json.dump(mkxp_config, file, indent=4)
+
+                logging.info("Updated mkxp.json with gameFolder: %s and RTP: %s", folder_path, rtp_path)
             except Exception as e:
-                logging.error("Failed to launch MKXPZ: %s", str(e))
-                QMessageBox.critical(self, "Error", f"Failed to launch MKXPZ: {str(e)}")
+                logging.error("Failed to update mkxp.json: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
+                return
         else:
-            install_response = QMessageBox.question(self, "MKXPZ Not Installed", 
-                                                    "MKXPZ is not installed. Would you like to install it now?", 
-                                                    QMessageBox.Yes | QMessageBox.No)
-            if install_response == QMessageBox.Yes:
-                self.install_mkxpz()
-            else:
-                logging.info("MKXPZ installation canceled by the user.")
-                QMessageBox.information(self, "Installation Canceled", "MKXPZ installation was canceled.")
+            logging.error("mkxp.json file not found at %s", mkxpz_json_path)
+            QMessageBox.critical(self, "Error", "mkxp.json file not found. MKXPZ launch aborted.")
+            return
+
+        mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
+        try:
+            subprocess.Popen([mkxpz_executable_path, folder_path])
+            logging.info("MKXPZ game launched from folder: %s", folder_path)
+        except Exception as e:
+            logging.error("Failed to launch MKXPZ: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to launch MKXPZ: {str(e)}")
 
     def export_standalone_app(self):
         app_name, ok = self.get_app_name()
@@ -662,6 +690,65 @@ class FolderPathApp(QMainWindow):
         except Exception as e:
             logging.error("Error installing MKXPZ: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install MKXPZ: {str(e)}")
+    
+    def install_RTP(self):
+        URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/RTP.zip"
+        zip_file_path = "/tmp/RTP.zip"
+        target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
+
+        try:
+            response = requests.get(URL, stream=True)
+            if response.status_code != 200:
+                logging.error("Failed to download RTP.")
+                QMessageBox.critical(self, "Error", "Failed to download RTP.")
+                return
+
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            chunk_size = 1024  # 1KB
+
+            progress_dialog = QProgressDialog("Downloading RTP...", "Cancel", 0, total_size, self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            start_time = QDateTime.currentDateTime()
+            canceled = False
+
+            with open(zip_file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_dialog.setValue(downloaded_size)
+
+                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                                    f"Speed: {download_speed:.2f} MB/s")
+
+                        if progress_dialog.wasCanceled():
+                            canceled = True
+                            logging.info("Download canceled by user.")
+                            break
+
+            if canceled:
+                os.remove(zip_file_path)
+                QMessageBox.information(self, "RTP Installation", "RTP installation canceled.")
+                return
+
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            logging.info("RTP extracted successfully to %s", target_dir)
+
+            os.remove(zip_file_path)
+            progress_dialog.close()
+            QMessageBox.information(self, "RTP Installation", "RTP installed successfully.")
+
+        except Exception as e:
+            logging.error("Error installing RTP: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to install RTP: {str(e)}")
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
