@@ -449,8 +449,14 @@ class FolderPathApp(QMainWindow):
             return
 
         destination_folder = QFileDialog.getExistingDirectory(self, "Select Destination Folder")
-        if destination_folder:
-            try:
+        if not destination_folder:
+            return
+
+        folder_path = self.last_selected_folder
+
+        try:
+            if self.check_package_json(folder_path):
+                # NWJS export process
                 selected_version = self.version_selector.currentText()
                 if not selected_version:
                     logging.error("No NWJS version selected.")
@@ -502,10 +508,79 @@ class FolderPathApp(QMainWindow):
                 logging.info("Standalone app exported successfully to %s", destination_folder)
 
                 QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
+                
+            elif self.check_game_ini(folder_path):
+                # MKXPZ export process
+                mkxpz_app_src = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
+                mkxpz_app_dst = os.path.join(destination_folder, app_name + ".app")
 
-            except Exception as e:
-                logging.error("Error exporting standalone app: %s", str(e))
-                QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
+                shutil.copytree(mkxpz_app_src, mkxpz_app_dst)
+
+                game_dir = os.path.join(mkxpz_app_dst, "Contents", "Game")
+
+                total_files = sum([len(files) for _, _, files in os.walk(folder_path)])
+
+                progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.show()
+
+                current_file_count = 0
+                for root, _, files in os.walk(folder_path):
+                    for file in files:
+                        s = os.path.join(root, file)
+                        d = os.path.join(game_dir, os.path.relpath(s, folder_path))
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        shutil.copy2(s, d)
+                        current_file_count += 1
+                        progress_dialog.setValue(current_file_count)
+                        progress_dialog.setLabelText(f"Copying over: {self.truncate_filename(file)}")
+                        QApplication.processEvents()
+                        if progress_dialog.wasCanceled():
+                            logging.info("Export canceled by user.")
+                            QMessageBox.information(self, "Export Canceled", "Export operation was canceled.")
+                            return
+
+                rtp_value = self.get_rtp_value(folder_path)
+                rtp_src = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+                rtp_dst = os.path.join(game_dir, rtp_value)
+                shutil.copytree(rtp_src, rtp_dst, dirs_exist_ok=True)
+
+                mkxp_json_path = os.path.join(game_dir, "mkxp.json")
+                if os.path.exists(mkxp_json_path):
+                    try:
+                        with open(mkxp_json_path, 'rb') as file:
+                            raw_data = file.read()
+                            result = chardet.detect(raw_data)
+                            encoding = result['encoding']
+
+                        with open(mkxp_json_path, 'r', encoding=encoding) as file:
+                            mkxp_config = json.load(file)
+
+                        mkxp_config["gameFolder"] = "./"
+                        mkxp_config["RTP"] = [f"./{rtp_value}"]
+
+                        with open(mkxp_json_path, 'w', encoding=encoding) as file:
+                            json.dump(mkxp_config, file, indent=4)
+                        
+                        logging.info("Updated mkxp.json with gameFolder: './' and RTP: './%s'", rtp_value)
+
+                    except Exception as e:
+                        logging.error("Failed to update mkxp.json: %s", str(e))
+                        QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
+                        return
+
+                progress_dialog.close()
+                QMessageBox.information(self, "Export Complete", "MKXPZ standalone app exported successfully.")
+                logging.info("MKXPZ standalone app exported successfully to %s", destination_folder)
+
+            else:
+                logging.error("No valid game file (package.json or Game.ini) found in the selected folder.")
+                QMessageBox.critical(self, "Error", "No valid game file (package.json or Game.ini) found in the selected folder.")
+
+        except Exception as e:
+            logging.error("Error exporting standalone app: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
 
     def get_app_name(self):
         dialog = QDialog(self)
