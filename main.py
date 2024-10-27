@@ -637,7 +637,11 @@ class FolderPathApp(QMainWindow):
                         progress_dialog.setValue(downloaded_size)
 
                         elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
-                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        if elapsed_time > 0:
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
+                        else:
+                            download_speed = 0
 
                         progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
                                                      f"Speed: {download_speed:.2f} MB/s")
@@ -729,7 +733,11 @@ class FolderPathApp(QMainWindow):
                         progress_dialog.setValue(downloaded_size)
 
                         elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
-                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        if elapsed_time > 0:
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
+                        else:
+                            download_speed = 0
 
                         progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
                                                     f"Speed: {download_speed:.2f} MB/s")
@@ -798,7 +806,11 @@ class FolderPathApp(QMainWindow):
                         progress_dialog.setValue(downloaded_size)
 
                         elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
-                        download_speed = downloaded_size / (1024 * 1024) / elapsed_time  # MB/s
+
+                        if elapsed_time > 0:
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
+                        else:
+                            download_speed = 0
 
                         progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
                                                     f"Speed: {download_speed:.2f} MB/s")
