@@ -233,11 +233,12 @@ class FolderPathApp(QMainWindow):
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         if os.path.exists(applications_dir):
-            # Only include directories that start with 'v'
             versions = [
                 v for v in os.listdir(applications_dir) 
                 if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")
             ]
+            versions.sort(key=lambda x: list(map(int, re.findall(r'\d+', x))), reverse=True)
+
             self.version_selector.clear()
             self.version_selector.addItems(versions)
         self.update_select_button_state()
