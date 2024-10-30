@@ -13,6 +13,7 @@ Plan/TODO (no particular order)
 10. ✅ Save editor<br>
 11. ✅ mkxp-z (support for Rpg Maker XP / VX / VX Ace)<br>
 12. ✅ Export non MV or MZ game as standalone app<br>
+13. ❌ Add Midi support<br>
 
 # How it works
 1. Downloads nwjs and mkxp-z
