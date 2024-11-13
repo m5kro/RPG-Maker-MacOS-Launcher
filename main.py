@@ -9,11 +9,58 @@ import platform
 import chardet
 import logging
 import re
+from functools import partial
 from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
-                               QDialogButtonBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
+                               QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
+
+# Default settings for MKXP-Z
+default_enabled_settings = {
+            "rgssVersion": False, "displayFPS": False, "printFPS": False, "winResizable": False,
+            "fullscreen": False, "fixedAspectRatio": False, "smoothScaling": False,
+            "smoothScalingDown": False, "bitmapSmoothScaling": False, "bitmapSmoothScalingDown": False,
+            "smoothScalingMipmaps": False, "bicubicSharpness": False, "xbrzScalingFactor": False,
+            "enableHires": False, "textureScalingFactor": False, "framebufferScalingFactor": False,
+            "atlasScalingFactor": False, "vsync": False, "defScreenW": False, "defScreenH": False,
+            "windowTitle": False, "fixedFramerate": False, "frameSkip": False, "syncToRefreshrate": False,
+            "solidFonts": False, "preferMetalRenderer": False, "subImageFix": False, "enableBlitting": False,
+            "maxTextureSize": False, "integerScalingActive": False, "integerScalingLastMile": False,
+            "gameFolder": "Force", "anyAltToggleFS": False, "enableReset": False, "enableSettings": False,
+            "allowSymlinks": False, "dataPathOrg": False, "dataPathApp": False, "iconPath": False,
+            "customScript": False, "preloadScript": False, "postloadScript": False, "pathCache": False,
+            "RTP": "Force", "patches": False, "useScriptNames": False, "fontSub": False, "rubyLoadpath": False,
+            "JITEnable": False, "JITVerboseLevel": False, "JITMaxCache": False, "JITMinCalls": False,
+            "YJITEnable": False, "midiSoundFont": "Force", "midiChorus": False, "midiReverb": False,
+            "SESourceCount": False, "BGMTrackCount": False, "execName": False, "bindingNames": False,
+            "dumpAtlas": False
+        }
+
+default_advanced_settings = {
+            "rgssVersion": 1, "displayFPS": False, "printFPS": False, "winResizable": True,
+            "fullscreen": False, "fixedAspectRatio": True, "smoothScaling": 0,
+            "smoothScalingDown": 0, "bitmapSmoothScaling": 0, "bitmapSmoothScalingDown": 0,
+            "smoothScalingMipmaps": False, "bicubicSharpness": 100, "xbrzScalingFactor": 4.0,
+            "enableHires": False, "textureScalingFactor": 4.0, "framebufferScalingFactor": 4.0,
+            "atlasScalingFactor": 4.0, "vsync": False, "defScreenW": 640, "defScreenH": 480,
+            "windowTitle": "Custom Title", "fixedFramerate": 0, "frameSkip": False,
+            "syncToRefreshrate": False, "solidFonts": ["Arial", "Times New Roman"],
+            "preferMetalRenderer": True, "subImageFix": False, "enableBlitting": False,
+            "maxTextureSize": 0, "integerScalingActive": False, "integerScalingLastMile": True,
+            "gameFolder": "", "anyAltToggleFS": False, "enableReset": True, "enableSettings": True,
+            "allowSymlinks": True, "dataPathOrg": "mycompany", "dataPathApp": "mygame",
+            "iconPath": "/path/to/icon.png", "customScript": "/path/to/script.rb",
+            "preloadScript": ["scripts/preload/ruby_classic_wrap.rb", "scripts/preload/mkxp_wrap.rb"],
+            "postloadScript": ["/path/to/script.rb"], "pathCache": True, "RTP": [],
+            "patches": ["/path/to/patch1.zip"], "useScriptNames": True, "fontSub": [
+                "Arial>Open Sans", "Times New Roman>Liberation Serif"],
+            "rubyLoadpath": ["/usr/lib64/ruby/"], "JITEnable": False, "JITVerboseLevel": 0,
+            "JITMaxCache": 100, "JITMinCalls": 10000, "YJITEnable": False, "midiSoundFont": "",
+            "midiChorus": False, "midiReverb": False, "SESourceCount": 6, "BGMTrackCount": 1,
+            "execName": "Game", "bindingNames": {"c": "Confirm", "b": "Cancel"},
+            "dumpAtlas": False
+        }
 
 def check_appdir():
     app_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
@@ -88,6 +135,9 @@ class FolderPathApp(QMainWindow):
         self.uninstall_button = QPushButton("Uninstall NWJS Version", self)
         self.layout.addWidget(self.uninstall_button)
 
+        self.mkxpz_advanced_button = QPushButton("MKXP-Z Advanced Settings", self)
+        self.layout.addWidget(self.mkxpz_advanced_button)
+
         self.open_log_button = QPushButton("Open Log", self)
         self.layout.addWidget(self.open_log_button)
 
@@ -97,6 +147,7 @@ class FolderPathApp(QMainWindow):
         self.start_game_button.clicked.connect(self.start_game)
         self.export_button.clicked.connect(self.export_standalone_app)
         self.open_save_editor_button.clicked.connect(self.open_save_editor)
+        self.mkxpz_advanced_button.clicked.connect(self.open_mkxpz_advanced_settings)
         self.open_log_button.clicked.connect(self.open_log)
 
         self.update_version_selector()
@@ -146,12 +197,13 @@ class FolderPathApp(QMainWindow):
             "lecrolonk - Donator\n\n"
             "mkxp-z maintainers - MKXP-Z\n\n"
             "Andmi Kuzgri - Save Editor Online\n\n"
-            "emerladCoder - Cheat Menu Plugin"
+            "emerladCoder - Cheat Menu Plugin\n\n"
+            "SynthFont developers - Soundfont"
         )
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 250)
+        dialog.resize(650, 270)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
@@ -192,6 +244,164 @@ class FolderPathApp(QMainWindow):
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
 
+    def open_mkxpz_advanced_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("MKXP-Z Advanced Settings")
+        dialog.resize(500, 700)
+
+        scroll_area = QScrollArea(dialog)
+        scroll_area.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_area.setWidget(scroll_content)
+
+        enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
+        advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
+
+        if not os.path.exists(enabled_settings_file):
+            with open(enabled_settings_file, 'w') as file:
+                json.dump(default_enabled_settings, file, indent=4)
+            logging.info("Created enabled-mkxpz-settings.json with default values.")
+        
+        if not os.path.exists(advanced_settings_file):
+            with open(advanced_settings_file, 'w') as file:
+                json.dump(default_advanced_settings, file, indent=4)
+            logging.info("Created mkxpz-advanced.json with default values.")
+
+        with open(enabled_settings_file, 'r') as file:
+            enabled_settings = json.load(file)
+        
+        with open(advanced_settings_file, 'r') as file:
+            advanced_settings = json.load(file)
+
+        required_box = QGroupBox("Required Options (leave blank for default)", dialog)
+        required_layout = QFormLayout(required_box)
+
+        optional_box = QGroupBox("Optional Options", dialog)
+        optional_layout = QVBoxLayout(optional_box)
+
+        self.settings_widgets = {}
+        for key, enabled in enabled_settings.items():
+            # Place "Force" settings in the required box
+            if enabled == "Force":
+                widget = self.create_setting_widget(advanced_settings[key], required_box)
+                required_layout.addRow(f"{key}:", widget)
+                self.settings_widgets[key] = {"widget": widget, "enabled_checkbox": None}
+            else:
+                group_box = QGroupBox(key, dialog)
+                group_layout = QFormLayout(group_box)
+
+                enabled_checkbox = QCheckBox("Enabled", group_box)
+                enabled_checkbox.setChecked(enabled == "True")
+                group_layout.addRow(enabled_checkbox)
+                enabled_checkbox.stateChanged.connect(partial(self.update_enabled_state, key, enabled_checkbox))
+
+                widget = self.create_setting_widget(advanced_settings[key], group_box)
+                group_layout.addRow("Value:", widget)
+
+                self.settings_widgets[key] = {"widget": widget, "enabled_checkbox": enabled_checkbox}
+                optional_layout.addWidget(group_box)
+
+        scroll_layout.addWidget(required_box)
+        scroll_layout.addWidget(optional_box)
+
+        buttons_layout = QHBoxLayout()
+        save_button = QPushButton("Save", dialog)
+        reset_button = QPushButton("Reset", dialog)
+        save_button.clicked.connect(lambda: self.save_mkxpz_advanced_settings(enabled_settings_file, advanced_settings_file))
+        reset_button.clicked.connect(self.reset_mkxpz_advanced_settings)
+
+        buttons_layout.addWidget(save_button)
+        buttons_layout.addWidget(reset_button)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addWidget(scroll_area)
+        dialog_layout.addLayout(buttons_layout)
+        dialog.setLayout(dialog_layout)
+
+        dialog.exec()
+
+    def create_setting_widget(self, value, parent):
+        if isinstance(value, bool):
+            widget = QCheckBox(parent)
+            widget.setChecked(value)
+        elif isinstance(value, (int, float)):
+            widget = QLineEdit(parent)
+            widget.setText(str(value))
+        elif isinstance(value, str):
+            widget = QLineEdit(parent)
+            widget.setText(value)
+        elif isinstance(value, list):
+            widget = QPlainTextEdit(parent)
+            widget.setPlainText("\n".join(map(str, value)))
+        elif isinstance(value, dict):
+            widget = QPlainTextEdit(parent)
+            widget.setPlainText(json.dumps(value, indent=4))
+        return widget
+
+
+    def update_enabled_state(self, key, checkbox):
+        self.settings_widgets[key]["enabled_checkbox"].setChecked(checkbox.isChecked())
+
+    def save_mkxpz_advanced_settings(self, enabled_settings_file, advanced_settings_file):
+        enabled_settings = {}
+        advanced_settings = {}
+
+        for key, controls in self.settings_widgets.items():
+            widget = controls["widget"]
+            enabled_checkbox = controls["enabled_checkbox"]
+
+            if key in default_enabled_settings and default_enabled_settings[key] == "Force":
+                enabled_settings[key] = "Force"
+            elif enabled_checkbox:
+                enabled_settings[key] = "True" if enabled_checkbox.isChecked() else "False"
+
+            # Save the current values of advanced settings based on widget types
+            if isinstance(widget, QCheckBox):
+                advanced_settings[key] = widget.isChecked()
+            elif isinstance(widget, QLineEdit):
+                value = widget.text()
+                if value.isdigit():
+                    advanced_settings[key] = int(value)
+                else:
+                    try:
+                        advanced_settings[key] = float(value)
+                    except ValueError:
+                        advanced_settings[key] = value
+            elif isinstance(widget, QPlainTextEdit):
+                text = widget.toPlainText().strip()
+                try:
+                    advanced_settings[key] = json.loads(text)
+                except json.JSONDecodeError:
+                    advanced_settings[key] = text.splitlines()
+
+        with open(enabled_settings_file, 'w') as file:
+            json.dump(enabled_settings, file, indent=4)
+        with open(advanced_settings_file, 'w') as file:
+            json.dump(advanced_settings, file, indent=4)
+        QMessageBox.information(self, "Settings Saved", "MKXP-Z settings have been saved successfully.")
+
+    def reset_mkxpz_advanced_settings(self):
+        for key, controls in self.settings_widgets.items():
+            widget = controls["widget"]
+            enabled_checkbox = controls["enabled_checkbox"]
+
+            default_enabled = default_enabled_settings.get(key, False)
+            default_value = default_advanced_settings.get(key)
+
+            if enabled_checkbox:
+                enabled_checkbox.setChecked(default_enabled == "True")
+
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(default_value)
+            elif isinstance(widget, QLineEdit):
+                widget.setText(str(default_value))
+            elif isinstance(widget, QPlainTextEdit):
+                if isinstance(default_value, list):
+                    widget.setPlainText("\n".join(map(str, default_value)))
+                elif isinstance(default_value, dict):
+                    widget.setPlainText(json.dumps(default_value, indent=4))
+
     def closeEvent(self, event):
         self.save_settings()
         super().closeEvent(event)
@@ -227,6 +437,23 @@ class FolderPathApp(QMainWindow):
             else:
                 logging.info("RTP installation canceled by the user.")
                 QMessageBox.information(self, "Installation Canceled", "RTP installation was canceled.")
+                return False
+        return True
+    
+    def check_soundfont_installed(self):
+        soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
+        if not os.path.exists(soundfont_path):
+            install_response = QMessageBox.question(
+                self, "Soundfont Not Found",
+                "The required soundfont (GMGSx.SF2) is missing. Would you like to download it now?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if install_response == QMessageBox.Yes:
+                self.download_soundfont()
+                return os.path.exists(soundfont_path)
+            else:
+                logging.info("Soundfont installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "Soundfont installation was canceled.")
                 return False
         return True
 
@@ -403,37 +630,61 @@ class FolderPathApp(QMainWindow):
         logging.info("Game launched using NWJS version %s.", selected_version)
 
     def launch_mkxpz_game(self, folder_path):
-        if not self.check_mkxpz_installed() or not self.check_RTP_installed():
+        if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed():
             return
 
+        enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
+        advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
+
+        if not os.path.exists(enabled_settings_file):
+            with open(enabled_settings_file, 'w') as file:
+                json.dump(default_enabled_settings, file, indent=4)
+            logging.info("Created enabled-mkxpz-settings.json with default values.")
+
+        if not os.path.exists(advanced_settings_file):
+            with open(advanced_settings_file, 'w') as file:
+                json.dump(default_advanced_settings, file, indent=4)
+            logging.info("Created mkxpz-advanced.json with default values.")
+
+        with open(enabled_settings_file, 'r') as file:
+            enabled_settings = json.load(file)
+
+        with open(advanced_settings_file, 'r') as file:
+            advanced_settings = json.load(file)
+
         mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
+        soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
+        rtp_value = self.get_rtp_value(folder_path)
+        rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+
         if os.path.exists(mkxpz_json_path):
-            try:
-                with open(mkxpz_json_path, 'rb') as file:
-                    raw_data = file.read()
-                    result = chardet.detect(raw_data)
-                    encoding = result['encoding']
-
-                with open(mkxpz_json_path, 'r', encoding=encoding) as file:
-                    mkxp_config = json.load(file)
-                
-                mkxp_config["gameFolder"] = folder_path
-
-                rtp_value = self.get_rtp_value(folder_path)
-                rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
-                mkxp_config["RTP"] = [rtp_path]
-
-                with open(mkxpz_json_path, 'w', encoding=encoding) as file:
-                    json.dump(mkxp_config, file, indent=4)
-
-                logging.info("Updated mkxp.json with gameFolder: %s and RTP: %s", folder_path, rtp_path)
-            except Exception as e:
-                logging.error("Failed to update mkxp.json: %s", str(e))
-                QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
-                return
+            with open(mkxpz_json_path, 'r') as file:
+                mkxp_config = json.load(file)
         else:
-            logging.error("mkxp.json file not found at %s", mkxpz_json_path)
-            QMessageBox.critical(self, "Error", "mkxp.json file not found. MKXPZ launch aborted.")
+            mkxp_config = {}
+
+        # Update the configuration with enabled settings
+        for key, enabled in enabled_settings.items():
+            if enabled in ["True", "Force"]:
+                mkxp_config[key] = advanced_settings.get(key, mkxp_config.get(key))
+                if key == "gameFolder" and not advanced_settings[key]:
+                    mkxp_config["gameFolder"] = folder_path
+                elif key == "RTP" and not advanced_settings[key]:
+                    mkxp_config["RTP"] = [rtp_path]
+                elif key == "midiSoundFont" and not advanced_settings[key]:
+                    mkxp_config["midiSoundFont"] = soundfont_path
+            else:
+                mkxp_config.pop(key, None)
+
+        # Save the updated configuration and launch the game
+        try:
+            with open(mkxpz_json_path, 'w') as file:
+                json.dump(mkxp_config, file, indent=4)
+            logging.info("Updated mkxp.json with enabled settings.")
+            logging.info("Launching with gameFolder: %s, RTP: %s, midiSoundFont: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"))
+        except Exception as e:
+            logging.error("Failed to update mkxp.json: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
             return
 
         mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
@@ -837,6 +1088,65 @@ class FolderPathApp(QMainWindow):
         except Exception as e:
             logging.error("Error installing RTP: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install RTP: {str(e)}")
+
+    def download_soundfont(self):
+        URL = "https://musical-artifacts.com/artifacts/841/GMGSx.SF2"
+        soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
+
+        if not os.path.exists(soundfont_path):
+            try:
+                response = requests.get(URL, stream=True)
+                total_size = int(response.headers.get('content-length', 0))
+                downloaded_size = 0
+                chunk_size = 1024  # 1KB
+
+                # Setup a progress dialog
+                progress_dialog = QProgressDialog("Downloading GMGSx.SF2 Soundfont...", "Cancel", 0, total_size, self)
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.show()
+
+                start_time = QDateTime.currentDateTime()
+                canceled = False
+
+                with open(soundfont_path, "wb") as file:
+                    for chunk in response.iter_content(chunk_size):
+                        if chunk:
+                            file.write(chunk)
+                            downloaded_size += len(chunk)
+
+                            # Update progress dialog
+                            progress_dialog.setValue(downloaded_size)
+                            elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+
+                            # Display download speed and progress
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time if elapsed_time > 0 else 0
+                            progress_dialog.setLabelText(
+                                f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                f"Speed: {download_speed:.2f} MB/s"
+                            )
+
+                            # Check if the user has canceled the download
+                            if progress_dialog.wasCanceled():
+                                canceled = True
+                                logging.info("Download canceled by user.")
+                                break
+
+                progress_dialog.close()
+
+                if canceled:
+                    os.remove(soundfont_path)
+                    QMessageBox.information(self, "Soundfont Installation", "Soundfont download canceled.")
+                    return
+                else:
+                    logging.info("Soundfont downloaded successfully to %s", soundfont_path)
+                    QMessageBox.information(self, "Soundfont Installation", "Soundfont GMGSx.SF2 downloaded successfully.")
+
+            except Exception as e:
+                logging.error("Error downloading GMGSx.SF2: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to download GMGSx.SF2: {str(e)}")
+        else:
+            logging.info("Soundfont GMGSx.SF2 already exists at %s", soundfont_path)
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)

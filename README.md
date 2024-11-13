@@ -13,8 +13,9 @@ Plan/TODO (no particular order)
 10. ✅ Save editor<br>
 11. ✅ mkxp-z (support for Rpg Maker XP / VX / VX Ace)<br>
 12. ✅ Export non MV or MZ game as standalone app<br>
-13. ❌ Add Midi support<br>
-14. ❌ Add advanced options for mkxp-z<br>
+13. ✅ Add Midi support<br>
+14. ✅ Add advanced options for mkxp-z<br>
+15. ❌ Apply advanced options and midi when exporting mkxp-z games
 
 # How it works
 1. Downloads nwjs and mkxp-z
@@ -42,15 +43,6 @@ Universal2 version (works on both x64 or arm64):
 7. Find the app in the dist folder
 8. Decativate venv <br> `deactivate`
 9. Clear the venv <br> `sudo rm -rf venv`
-# Donations
-Bitcoin Wallet:<br>
-bc1qup498tqtm55zav2ckjyhlq8qnd0xmwjnvs7fa3<br>
-<br>
-Bitcoin Lightning Wallet (not an email address!):<br>
-m5kro@speed.app<br>
-<br>
-Ethereum Wallet:<br>
-0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
 # Credits and Special Thanks
 Donators:<br>
 lecrolonk <br>
@@ -63,3 +55,16 @@ https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin <br>
 <br>
 Credit to SaveEditorOnline for the save editor <br>
 https://saveeditor.online <br>
+<br>
+Credit to SynthFont developers for the Soundfont <br>
+https://musical-artifacts.com/artifacts/841 <br>
+<br>
+# Donations
+Bitcoin Wallet:<br>
+bc1qup498tqtm55zav2ckjyhlq8qnd0xmwjnvs7fa3<br>
+<br>
+Bitcoin Lightning Wallet (not an email address!):<br>
+m5kro@speed.app<br>
+<br>
+Ethereum Wallet:<br>
+0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
