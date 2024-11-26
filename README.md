@@ -15,7 +15,7 @@ Plan/TODO (no particular order)
 12. ✅ Export non MV or MZ game as standalone app<br>
 13. ✅ Add Midi support<br>
 14. ✅ Add advanced options for mkxp-z<br>
-15. ❌ Apply advanced options and midi when exporting mkxp-z games
+15. ✅ Apply advanced options and midi when exporting mkxp-z games
 
 # How it works
 1. Downloads nwjs and mkxp-z

@@ -658,7 +658,11 @@ class FolderPathApp(QMainWindow):
         rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
 
         if os.path.exists(mkxpz_json_path):
-            with open(mkxpz_json_path, 'r') as file:
+            with open(mkxpz_json_path, 'rb') as file:
+                raw_data = file.read()
+                result = chardet.detect(raw_data)
+                encoding = result['encoding']
+            with open(mkxpz_json_path, 'r', encoding=encoding) as file:
                 mkxp_config = json.load(file)
         else:
             mkxp_config = {}
@@ -678,7 +682,11 @@ class FolderPathApp(QMainWindow):
 
         # Save the updated configuration and launch the game
         try:
-            with open(mkxpz_json_path, 'w') as file:
+            with open(mkxpz_json_path, 'rb') as file:
+                raw_data = file.read()
+                result = chardet.detect(raw_data)
+                encoding = result['encoding']
+            with open(mkxpz_json_path, 'w', encoding=encoding) as file:
                 json.dump(mkxp_config, file, indent=4)
             logging.info("Updated mkxp.json with enabled settings.")
             logging.info("Launching with gameFolder: %s, RTP: %s, midiSoundFont: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"))
@@ -762,6 +770,69 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
                 
             elif self.check_game_ini(folder_path):
+                if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed():
+                    return
+
+                enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
+                advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
+
+                if not os.path.exists(enabled_settings_file):
+                    with open(enabled_settings_file, 'w') as file:
+                        json.dump(default_enabled_settings, file, indent=4)
+                    logging.info("Created enabled-mkxpz-settings.json with default values.")
+
+                if not os.path.exists(advanced_settings_file):
+                    with open(advanced_settings_file, 'w') as file:
+                        json.dump(default_advanced_settings, file, indent=4)
+                    logging.info("Created mkxpz-advanced.json with default values.")
+
+                with open(enabled_settings_file, 'r') as file:
+                    enabled_settings = json.load(file)
+
+                with open(advanced_settings_file, 'r') as file:
+                    advanced_settings = json.load(file)
+
+                mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
+                soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
+                rtp_value = self.get_rtp_value(folder_path)
+                rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+
+                if os.path.exists(mkxpz_json_path):
+                    with open(mkxpz_json_path, 'rb') as file:
+                        raw_data = file.read()
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+                    with open(mkxpz_json_path, 'r', encoding=encoding) as file:
+                        mkxp_config = json.load(file)
+                else:
+                    mkxp_config = {}
+
+                for key, enabled in enabled_settings.items():
+                    if enabled in ["True", "Force"]:
+                        mkxp_config[key] = advanced_settings.get(key, mkxp_config.get(key))
+                        if key == "gameFolder" and not advanced_settings[key]:
+                            mkxp_config["gameFolder"] = folder_path
+                        elif key == "RTP" and not advanced_settings[key]:
+                            mkxp_config["RTP"] = [rtp_path]
+                        elif key == "midiSoundFont" and not advanced_settings[key]:
+                            mkxp_config["midiSoundFont"] = soundfont_path
+                    else:
+                        mkxp_config.pop(key, None)
+
+                try:
+                    with open(mkxpz_json_path, 'rb') as file:
+                        raw_data = file.read()
+                        result = chardet.detect(raw_data)
+                        encoding = result['encoding']
+                    with open(mkxpz_json_path, 'w', encoding=encoding) as file:
+                        json.dump(mkxp_config, file, indent=4)
+                    logging.info("Updated mkxp.json with enabled settings.")
+                    logging.info("Setting: %s, RTP: %s, midiSoundFont: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"))
+                except Exception as e:
+                    logging.error("Failed to update mkxp.json: %s", str(e))
+                    QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
+                    return
+
                 # MKXPZ export process
                 mkxpz_app_src = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
                 mkxpz_app_dst = os.path.join(destination_folder, app_name + ".app")
@@ -798,6 +869,10 @@ class FolderPathApp(QMainWindow):
                 rtp_dst = os.path.join(game_dir, rtp_value)
                 shutil.copytree(rtp_src, rtp_dst, dirs_exist_ok=True)
 
+                soundfont_src = os.path.expanduser(mkxp_config["midiSoundFont"])
+                soundfont_dst = os.path.join(game_dir, "GMGSx.SF2")
+                shutil.copy2(soundfont_src, soundfont_dst)
+
                 mkxp_json_path = os.path.join(game_dir, "mkxp.json")
                 if os.path.exists(mkxp_json_path):
                     try:
@@ -811,6 +886,7 @@ class FolderPathApp(QMainWindow):
 
                         mkxp_config["gameFolder"] = "./"
                         mkxp_config["RTP"] = [f"./{rtp_value}"]
+                        mkxp_config["midiSoundFont"] = f"./{os.path.basename(soundfont_dst)}"
 
                         with open(mkxp_json_path, 'w', encoding=encoding) as file:
                             json.dump(mkxp_config, file, indent=4)
