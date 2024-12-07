@@ -7,8 +7,8 @@ The time limit is 2 weeks (Ends December 21)<br>
 <br>
 The reason I'm creating a poll for this is because adding more engines will be a huge undertaking.<br>
 The current python code just isn't versatile enough to do this, so I'll need to move to something like <br>
-nodejs. I created the poll to see if it's worth putting in all the effort and time. A certain number <br>
-of yes votes will be needed (this will not be disclosed) otherwise the project is complete.<br>
+nodejs. A certain number of yes votes will be needed (this will not be disclosed) otherwise the <br>
+project is complete.<br>
 <br>
 Plan/TODO (no particular order)
 1. ✅ Add nwjs version selected<br>
