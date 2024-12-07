@@ -1,5 +1,15 @@
 # RPG-Maker-MacOS-Launcher
 A launcher to natively play RPG maker MV, MZ, XP, VX, and VX Ace games on MacOS!<br>
+# Vote For The Expansion to Different Game Engines
+https://take.supersurvey.com/poll5352272x7e21F58b-160 <br>
+Here's a small poll to determine if the project should be expanded to different game engines. <br>
+The time limit is 2 weeks (Ends December 21)<br>
+<br>
+The reason I'm creating a poll for this is because adding more engines will be a huge undertaking.<br>
+The current python code just isn't versatile enough to do this, so I'll need to move to something like <br>
+nodejs. I created the poll to see if it's worth putting in all the effort and time. A certain number <br>
+of yes votes will be needed (this will not be disclosed) otherwise the project is complete.<br>
+<br>
 Plan/TODO (no particular order)
 1. ✅ Add nwjs version selected<br>
 2. ✅ Toggle for game_en.exe extractor (if for some reason you want to play in japanese?!)<br>
