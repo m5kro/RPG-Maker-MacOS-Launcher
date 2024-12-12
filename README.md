@@ -1,5 +1,7 @@
 # RPG-Maker-MacOS-Launcher
 A launcher to natively play RPG maker MV, MZ, XP, VX, and VX Ace games on MacOS!<br>
+Development for this launcher has been completed! Only bugfixes will be released if needed.<br>
+<br>
 Plan/TODO (no particular order)
 1. ✅ Add nwjs version selected<br>
 2. ✅ Toggle for game_en.exe extractor (if for some reason you want to play in japanese?!)<br>
