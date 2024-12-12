@@ -612,8 +612,8 @@ class FolderPathApp(QMainWindow):
             logging.info("Launching game using MKXPZ.")
             self.launch_mkxpz_game(folder_path)
         else:
-            logging.error("Neither package.json nor .ini files found in the folder.")
-            QMessageBox.critical(self, "Error", "No valid game file (package.json or .ini) found in the selected folder.")
+            logging.error("Neither package.json nor Game.ini files found in the folder.")
+            QMessageBox.critical(self, "Error", "No valid game file (package.json or Game.ini) found in the selected folder.")
 
     def launch_nwjs_game(self, folder_path):
         selected_version = self.version_selector.currentText()
