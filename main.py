@@ -548,12 +548,15 @@ class FolderPathApp(QMainWindow):
     
     def get_rtp_value(self, folder_path):
         game_ini_path = os.path.join(folder_path, "Game.ini")
-        with open(game_ini_path, 'r') as file:
-            for line in file:
-                match = re.match(r"RTP=(.*)", line)
-                if match:
-                    return match.group(1).strip()  # Returns the value after '='
-        logging.warning("RTP value not found in Game.ini. Assuming Standard RTP (RPG XP).")
+        try:
+            with open(game_ini_path, 'r') as file:
+                for line in file:
+                    match = re.match(r"\s*rtp\s*=\s*(.*)", line, re.IGNORECASE)
+                    if match:
+                        return match.group(1).strip()
+            logging.warning("RTP value not found in Game.ini. Assuming Standard RTP (RPG XP).")
+        except FileNotFoundError:
+            logging.error(f"Game.ini file not found in the folder: {folder_path}")
         return "Standard"
 
     def check_and_unpack_game_en(self, folder_path):
