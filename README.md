@@ -17,7 +17,8 @@ Plan/TODO (no particular order)
 12. ✅ Export non MV or MZ game as standalone app<br>
 13. ✅ Add Midi support<br>
 14. ✅ Add advanced options for mkxp-z<br>
-15. ✅ Apply advanced options and midi when exporting mkxp-z games
+15. ✅ Apply advanced options and midi when exporting mkxp-z games <br>
+16. ✅ Use Kawariki patches for some windows API calls
 
 # How it works
 1. Downloads nwjs and mkxp-z
@@ -60,6 +61,9 @@ https://saveeditor.online <br>
 <br>
 Credit to SynthFont developers for the Soundfont <br>
 https://musical-artifacts.com/artifacts/841 <br>
+<br>
+Credit to Orochimarufan for the Kawariki Patches <br>
+https://github.com/Orochimarufan/Kawariki <br>
 <br>
 # Donations
 Bitcoin Wallet:<br>

@@ -16,9 +16,12 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
+current_version = "2.4"
+config_version = ""
+
 # Default settings for MKXP-Z
 default_enabled_settings = {
-            "rgssVersion": False, "displayFPS": False, "printFPS": False, "winResizable": False,
+            "rgssVersion": "Force", "displayFPS": False, "printFPS": False, "winResizable": False,
             "fullscreen": False, "fixedAspectRatio": False, "smoothScaling": False,
             "smoothScalingDown": False, "bitmapSmoothScaling": False, "bitmapSmoothScalingDown": False,
             "smoothScalingMipmaps": False, "bicubicSharpness": False, "xbrzScalingFactor": False,
@@ -29,7 +32,7 @@ default_enabled_settings = {
             "maxTextureSize": False, "integerScalingActive": False, "integerScalingLastMile": False,
             "gameFolder": "Force", "anyAltToggleFS": False, "enableReset": False, "enableSettings": False,
             "allowSymlinks": False, "dataPathOrg": False, "dataPathApp": False, "iconPath": False,
-            "customScript": False, "preloadScript": False, "postloadScript": False, "pathCache": False,
+            "customScript": False, "preloadScript": "Force", "postloadScript": False, "pathCache": False,
             "RTP": "Force", "patches": False, "useScriptNames": False, "fontSub": False, "rubyLoadpath": False,
             "JITEnable": False, "JITVerboseLevel": False, "JITMaxCache": False, "JITMinCalls": False,
             "YJITEnable": False, "midiSoundFont": "Force", "midiChorus": False, "midiReverb": False,
@@ -38,7 +41,7 @@ default_enabled_settings = {
         }
 
 default_advanced_settings = {
-            "rgssVersion": 1, "displayFPS": False, "printFPS": False, "winResizable": True,
+            "rgssVersion": 0, "displayFPS": False, "printFPS": False, "winResizable": True,
             "fullscreen": False, "fixedAspectRatio": True, "smoothScaling": 0,
             "smoothScalingDown": 0, "bitmapSmoothScaling": 0, "bitmapSmoothScalingDown": 0,
             "smoothScalingMipmaps": False, "bicubicSharpness": 100, "xbrzScalingFactor": 4.0,
@@ -51,7 +54,7 @@ default_advanced_settings = {
             "gameFolder": "", "anyAltToggleFS": False, "enableReset": True, "enableSettings": True,
             "allowSymlinks": True, "dataPathOrg": "mycompany", "dataPathApp": "mygame",
             "iconPath": "/path/to/icon.png", "customScript": "/path/to/script.rb",
-            "preloadScript": ["scripts/preload/ruby_classic_wrap.rb", "scripts/preload/mkxp_wrap.rb"],
+            "preloadScript": [],
             "postloadScript": ["/path/to/script.rb"], "pathCache": True, "RTP": [],
             "patches": ["/path/to/patch1.zip"], "useScriptNames": True, "fontSub": [
                 "Arial>Open Sans", "Times New Roman>Liberation Serif"],
@@ -152,6 +155,8 @@ class FolderPathApp(QMainWindow):
 
         self.update_version_selector()
         self.load_settings()
+        if current_version != config_version:
+            self.remove_configs()
         self.update_select_button_state()
         self.check_start_game_button()
 
@@ -198,12 +203,13 @@ class FolderPathApp(QMainWindow):
             "mkxp-z maintainers - MKXP-Z\n\n"
             "Andmi Kuzgri - Save Editor Online\n\n"
             "emerladCoder - Cheat Menu Plugin\n\n"
-            "SynthFont developers - Soundfont"
+            "SynthFont developers - Soundfont\n\n"
+            "Orochimarufan - Kawariki Patches"
         )
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 270)
+        dialog.resize(650, 310)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
@@ -219,15 +225,23 @@ class FolderPathApp(QMainWindow):
 
     def load_settings(self):
         if os.path.exists(self.SETTINGS_FILE):
-            with open(self.SETTINGS_FILE, 'r') as file:
-                settings = json.load(file)
-                self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
-                self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
-                self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
-                last_version = settings.get('last_selected_version')
-                if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
-                    self.version_selector.setCurrentText(last_version)
-                self.last_selected_folder = settings.get('last_selected_folder', os.path.expanduser("~/Downloads"))
+            try:
+                with open(self.SETTINGS_FILE, 'r') as file:
+                    settings = json.load(file)
+                    self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
+                    self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
+                    self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
+                    last_version = settings.get('last_selected_version')
+                    if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
+                        self.version_selector.setCurrentText(last_version)
+                    self.last_selected_folder = settings.get('last_selected_folder', os.path.expanduser("~/Downloads"))
+                    global config_version
+                    config_version = settings.get('launcher_version', "")
+                    self.update_selected_folder_label()
+            except Exception as e:
+                logging.error("Failed to load settings: %s", str(e))
+                logging.error("Using default settings.")
+                self.last_selected_folder = os.path.expanduser("~/Downloads")
                 self.update_selected_folder_label()
         else:
             self.last_selected_folder = os.path.expanduser("~/Downloads")
@@ -239,10 +253,20 @@ class FolderPathApp(QMainWindow):
             'add_cheat_menu': self.cheat_menu_checkbox.isChecked(),
             'optimize_space': self.optimize_space_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
-            'last_selected_folder': self.last_selected_folder
+            'last_selected_folder': self.last_selected_folder,
+            'launcher_version': current_version 
         }
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
+    
+    def remove_configs(self):
+        enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
+        advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
+        if os.path.exists(enabled_settings_file):
+            os.remove(enabled_settings_file)
+        if os.path.exists(advanced_settings_file):
+            os.remove(advanced_settings_file)
+        logging.info("Removed old MKXP-Z configuration files.")
 
     def open_mkxpz_advanced_settings(self):
         dialog = QDialog(self)
@@ -274,7 +298,7 @@ class FolderPathApp(QMainWindow):
         with open(advanced_settings_file, 'r') as file:
             advanced_settings = json.load(file)
 
-        required_box = QGroupBox("Required Options (leave blank for default)", dialog)
+        required_box = QGroupBox("Required Options, leave blank for default (except rgssVersion which should be 0)", dialog)
         required_layout = QFormLayout(required_box)
 
         optional_box = QGroupBox("Optional Options", dialog)
@@ -322,6 +346,7 @@ class FolderPathApp(QMainWindow):
         dialog.exec()
 
     def create_setting_widget(self, value, parent):
+        widget = None
         if isinstance(value, bool):
             widget = QCheckBox(parent)
             widget.setChecked(value)
@@ -424,7 +449,7 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.information(self, "Installation Canceled", "MKXPZ installation was canceled.")
                 return False
         return True
-    
+
     def check_RTP_installed(self):
         rtp_folder = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP")
         if not os.path.exists(rtp_folder):
@@ -454,6 +479,23 @@ class FolderPathApp(QMainWindow):
             else:
                 logging.info("Soundfont installation canceled by the user.")
                 QMessageBox.information(self, "Installation Canceled", "Soundfont installation was canceled.")
+                return False
+        return True
+    
+    def check_kawariki_installed(self):
+        kawariki_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/kawariki/preload.rb")
+        if not os.path.exists(kawariki_path):
+            install_response = QMessageBox.question(
+                self, "Kawariki Patches Not Found", 
+                "Kawariki Patches are required but not found. Would you like to install it now?", 
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if install_response == QMessageBox.Yes:
+                self.download_kawariki_patches()
+                return True
+            else:
+                logging.info("Kawariki installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "Kawariki installation was canceled.")
                 return False
         return True
 
@@ -553,11 +595,18 @@ class FolderPathApp(QMainWindow):
                 for line in file:
                     match = re.match(r"\s*rtp\s*=\s*(.*)", line, re.IGNORECASE)
                     if match:
-                        return match.group(1).strip()
+                        if match.group(1).strip().lower() == "standard":
+                            return "Standard", 1
+                        elif match.group(1).strip().lower() == "rpgvx":
+                            return "RPGVX", 2
+                        elif match.group(1).strip().lower() == "rpgvxace":
+                            return "RPGVXace", 3
+                        else:
+                            return match.group(1).strip(), 1
             logging.warning("RTP value not found in Game.ini. Assuming Standard RTP (RPG XP).")
         except FileNotFoundError:
             logging.error(f"Game.ini file not found in the folder: {folder_path}")
-        return "Standard"
+        return "Standard", 1
 
     def check_and_unpack_game_en(self, folder_path):
         game_exe = None
@@ -633,7 +682,7 @@ class FolderPathApp(QMainWindow):
         logging.info("Game launched using NWJS version %s.", selected_version)
 
     def launch_mkxpz_game(self, folder_path):
-        if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed():
+        if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed() or not self.check_kawariki_installed():
             return
 
         enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
@@ -657,8 +706,9 @@ class FolderPathApp(QMainWindow):
 
         mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
         soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
-        rtp_value = self.get_rtp_value(folder_path)
+        rtp_value, rgss_version = self.get_rtp_value(folder_path)
         rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+        kawariki_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/kawariki/preload.rb")
 
         if os.path.exists(mkxpz_json_path):
             with open(mkxpz_json_path, 'rb') as file:
@@ -680,6 +730,10 @@ class FolderPathApp(QMainWindow):
                     mkxp_config["RTP"] = [rtp_path]
                 elif key == "midiSoundFont" and not advanced_settings[key]:
                     mkxp_config["midiSoundFont"] = soundfont_path
+                elif key == "preloadScript" and not advanced_settings[key]:
+                    mkxp_config["preloadScript"] = [kawariki_path]
+                elif key == "rgssVersion" and advanced_settings[key] == 0:
+                    mkxp_config["rgssVersion"] = rgss_version
             else:
                 mkxp_config.pop(key, None)
 
@@ -692,7 +746,7 @@ class FolderPathApp(QMainWindow):
             with open(mkxpz_json_path, 'w', encoding=encoding) as file:
                 json.dump(mkxp_config, file, indent=4)
             logging.info("Updated mkxp.json with enabled settings.")
-            logging.info("Launching with gameFolder: %s, RTP: %s, midiSoundFont: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"))
+            logging.info("Launching with gameFolder: %s, RTP: %s, midiSoundFont: %s, preloadScript: %s, rgssVersion: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"), mkxp_config.get("preloadScript"), mkxp_config.get("rgssVersion"))
         except Exception as e:
             logging.error("Failed to update mkxp.json: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
@@ -797,8 +851,9 @@ class FolderPathApp(QMainWindow):
 
                 mkxpz_json_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/Game/mkxp.json")
                 soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
-                rtp_value = self.get_rtp_value(folder_path)
+                rtp_value, rgss_version = self.get_rtp_value(folder_path)
                 rtp_path = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
+                kawariki_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/kawariki")
 
                 if os.path.exists(mkxpz_json_path):
                     with open(mkxpz_json_path, 'rb') as file:
@@ -819,6 +874,10 @@ class FolderPathApp(QMainWindow):
                             mkxp_config["RTP"] = [rtp_path]
                         elif key == "midiSoundFont" and not advanced_settings[key]:
                             mkxp_config["midiSoundFont"] = soundfont_path
+                        elif key == "preloadScript" and not advanced_settings[key]:
+                            mkxp_config["preloadScript"] = [kawariki_path]
+                        elif key == "rgssVersion" and advanced_settings[key] == 0:
+                            mkxp_config["rgssVersion"] = rgss_version
                     else:
                         mkxp_config.pop(key, None)
 
@@ -830,7 +889,7 @@ class FolderPathApp(QMainWindow):
                     with open(mkxpz_json_path, 'w', encoding=encoding) as file:
                         json.dump(mkxp_config, file, indent=4)
                     logging.info("Updated mkxp.json with enabled settings.")
-                    logging.info("Setting: %s, RTP: %s, midiSoundFont: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"))
+                    logging.info("Setting: %s, RTP: %s, midiSoundFont: %s, preloadScript: %s, rgssVersion: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"), mkxp_config.get("preloadScript"), mkxp_config.get("rgssVersion"))
                 except Exception as e:
                     logging.error("Failed to update mkxp.json: %s", str(e))
                     QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
@@ -867,7 +926,7 @@ class FolderPathApp(QMainWindow):
                             QMessageBox.information(self, "Export Canceled", "Export operation was canceled.")
                             return
 
-                rtp_value = self.get_rtp_value(folder_path)
+                rtp_value, rgss_version = self.get_rtp_value(folder_path)
                 rtp_src = os.path.join(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP"), rtp_value)
                 rtp_dst = os.path.join(game_dir, rtp_value)
                 shutil.copytree(rtp_src, rtp_dst, dirs_exist_ok=True)
@@ -875,6 +934,11 @@ class FolderPathApp(QMainWindow):
                 soundfont_src = os.path.expanduser(mkxp_config["midiSoundFont"])
                 soundfont_dst = os.path.join(game_dir, "GMGSx.SF2")
                 shutil.copy2(soundfont_src, soundfont_dst)
+
+                kawariki_src = os.path.expanduser(mkxp_config["preloadScript"][0])
+                kawariki_dst = os.path.join(game_dir, "kawariki")
+                shutil.copytree(kawariki_src, kawariki_dst, dirs_exist_ok=True)
+                
 
                 mkxp_json_path = os.path.join(game_dir, "mkxp.json")
                 if os.path.exists(mkxp_json_path):
@@ -890,6 +954,7 @@ class FolderPathApp(QMainWindow):
                         mkxp_config["gameFolder"] = "./"
                         mkxp_config["RTP"] = [f"./{rtp_value}"]
                         mkxp_config["midiSoundFont"] = f"./{os.path.basename(soundfont_dst)}"
+                        mkxp_config["preloadScript"] = [f"./{os.path.join("kawariki", "preload.rb")}"]
 
                         with open(mkxp_json_path, 'w', encoding=encoding) as file:
                             json.dump(mkxp_config, file, indent=4)
@@ -1226,6 +1291,69 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to download GMGSx.SF2: {str(e)}")
         else:
             logging.info("Soundfont GMGSx.SF2 already exists at %s", soundfont_path)
+    
+    def download_kawariki_patches(self):
+        URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/kawariki.zip"
+        zip_file_path = "/tmp/kawariki.zip"
+        target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
+
+        try:
+            response = requests.get(URL, stream=True)
+            if response.status_code != 200:
+                logging.error("Failed to download Kawariki patches.")
+                QMessageBox.critical(self, "Error", "Failed to download Kawariki patches.")
+                return
+
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            chunk_size = 1024  # 1KB
+
+            progress_dialog = QProgressDialog("Downloading Kawariki patches...", "Cancel", 0, total_size, self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            start_time = QDateTime.currentDateTime()
+            canceled = False
+
+            with open(zip_file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_dialog.setValue(downloaded_size)
+
+                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+
+                        if elapsed_time > 0:
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
+                        else:
+                            download_speed = 0
+
+                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                                        f"Speed: {download_speed:.2f} MB/s")
+
+                        if progress_dialog.wasCanceled():
+                            canceled = True
+                            logging.info("Download canceled by user.")
+                            break
+
+            if canceled:
+                os.remove(zip_file_path)
+                QMessageBox.information(self, "Kawariki Patches Installation", "Kawariki patches installation canceled.")
+                return
+
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            logging.info("Kawariki patches extracted successfully to %s", target_dir)
+
+            os.remove(zip_file_path)
+            progress_dialog.close()
+            QMessageBox.information(self, "Kawariki Patches Installation", "Kawariki patches installed successfully.")
+
+        except Exception as e:
+            logging.error("Error installing Kawariki patches: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to install Kawariki patches: {str(e)}")
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
