@@ -19,6 +19,7 @@ Plan/TODO (no particular order)
 14. ✅ Add advanced options for mkxp-z<br>
 15. ✅ Apply advanced options and midi when exporting mkxp-z games <br>
 16. ✅ Use Kawariki patches for some windows API calls
+17. ❌ Extract rgss#a files for VX Ace, VX, and XP games
 
 # How it works
 1. Downloads nwjs and mkxp-z
