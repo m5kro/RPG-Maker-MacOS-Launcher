@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import json
 import subprocess
 import requests
@@ -16,8 +17,10 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "2.4"
+current_version = "2.4.1"
 config_version = ""
+latest_commit_sha = ""
+last_commit_sha = ""
 
 # Default settings for MKXP-Z
 default_enabled_settings = {
@@ -237,6 +240,8 @@ class FolderPathApp(QMainWindow):
                     self.last_selected_folder = settings.get('last_selected_folder', os.path.expanduser("~/Downloads"))
                     global config_version
                     config_version = settings.get('launcher_version', "")
+                    global last_commit_sha
+                    last_commit_sha = settings.get('last_commit_sha', "")
                     self.update_selected_folder_label()
             except Exception as e:
                 logging.error("Failed to load settings: %s", str(e))
@@ -254,7 +259,8 @@ class FolderPathApp(QMainWindow):
             'optimize_space': self.optimize_space_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder,
-            'launcher_version': current_version 
+            'launcher_version': current_version,
+            'last_commit_sha': last_commit_sha
         }
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
@@ -435,9 +441,11 @@ class FolderPathApp(QMainWindow):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         return os.path.exists(applications_dir) and any(os.path.isdir(os.path.join(applications_dir, v)) for v in os.listdir(applications_dir))
 
-    def check_mkxpz_installed(self):
+    def check_mkxpz_installed(self, warn=True):
         mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
         if not os.path.exists(mkxpz_path):
+            if not warn:
+                return False
             install_response = QMessageBox.question(self, "MKXPZ Not Installed", 
                                                     "MKXPZ is not installed. Would you like to install it now?", 
                                                     QMessageBox.Yes | QMessageBox.No)
@@ -498,6 +506,19 @@ class FolderPathApp(QMainWindow):
                 QMessageBox.information(self, "Installation Canceled", "Kawariki installation was canceled.")
                 return False
         return True
+    
+    def check_mkxpz_update(self):
+        try:
+            response = requests.get("https://api.github.com/repos/m5kro/mkxp-z/commits/dev")
+            response.raise_for_status()
+            latest_commit = response.json()
+            global latest_commit_sha
+            latest_commit_sha = latest_commit['sha']
+            logging.info("Latest commit SHA: %s", latest_commit_sha)
+            return latest_commit_sha
+        except requests.RequestException as e:
+            logging.error("Failed to fetch latest commit SHA: %s", str(e))
+            return last_commit_sha
 
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
@@ -682,6 +703,17 @@ class FolderPathApp(QMainWindow):
         logging.info("Game launched using NWJS version %s.", selected_version)
 
     def launch_mkxpz_game(self, folder_path):
+        if self.check_mkxpz_installed(warn=False):
+            global last_commit_sha
+            logging.info("Checking for MKXP-Z updates.")
+            logging.info("Last commit SHA: %s", last_commit_sha)
+            if last_commit_sha != self.check_mkxpz_update():
+                update_response = QMessageBox.question(self, "MKXP-Z Update Available",
+                                                       "A new update is available for MKXP-Z. Would you like to update now?",
+                                                       QMessageBox.Yes | QMessageBox.No)
+                if update_response == QMessageBox.Yes:
+                    self.install_mkxpz()
+                    
         if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed() or not self.check_kawariki_installed():
             return
 
@@ -1164,7 +1196,11 @@ class FolderPathApp(QMainWindow):
                 return
 
             progress_dialog.close()
+            global last_commit_sha
+            global latest_commit_sha
+            last_commit_sha = latest_commit_sha
             QMessageBox.information(self, "MKXPZ Installation", "MKXPZ installed successfully.")
+            
 
         except Exception as e:
             logging.error("Error installing MKXPZ: %s", str(e))
@@ -1228,6 +1264,7 @@ class FolderPathApp(QMainWindow):
             os.remove(zip_file_path)
             progress_dialog.close()
             QMessageBox.information(self, "RTP Installation", "RTP installed successfully.")
+            
 
         except Exception as e:
             logging.error("Error installing RTP: %s", str(e))
