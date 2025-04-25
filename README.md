@@ -18,9 +18,12 @@ Plan/TODO (no particular order)
 13. ✅ Add Midi support<br>
 14. ✅ Add advanced options for mkxp-z<br>
 15. ✅ Apply advanced options and midi when exporting mkxp-z games <br>
-16. ✅ Use Kawariki patches for some windows API calls
-17. ❌ Extract rgss#a files for VX Ace, VX, and XP games
-18. ✅ Detect mkxp-z updates
+16. ✅ Use Kawariki patches for some windows API calls<br>
+17. ❌ Extract rgss#a files for VX Ace, VX, and XP games<br>
+18. ✅ Detect mkxp-z updates<br>
+19. ✅ Better RPG maker version detector<br>
+20. ✅ Fix possible file permissions issue<br>
+21. ✅ Remove cheat engine when untoggled
 
 # How it works
 1. Downloads nwjs and mkxp-z

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "2.4.1"
+current_version = "2.5"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -508,7 +508,7 @@ class FolderPathApp(QMainWindow):
     
     def check_mkxpz_update(self):
         try:
-            response = requests.get("https://api.github.com/repos/m5kro/mkxp-z/commits/dev")
+            response = requests.get("https://api.github.com/repos/m5kro/mkxp-z/commits/dev", timeout=1)
             response.raise_for_status()
             latest_commit = response.json()
             global latest_commit_sha
@@ -612,9 +612,11 @@ class FolderPathApp(QMainWindow):
         game_ini_path = os.path.join(folder_path, "Game.ini")
         try:
             with open(game_ini_path, 'r') as file:
-                for line in file:
+                lines = file.readlines()
+                for line in lines:
                     match = re.match(r"\s*rtp\s*=\s*(.*)", line, re.IGNORECASE)
                     if match:
+                        logging.info(f"RTP value found.")
                         if match.group(1).strip().lower() == "standard":
                             return "Standard", 1
                         elif match.group(1).strip().lower() == "rpgvx":
@@ -622,10 +624,66 @@ class FolderPathApp(QMainWindow):
                         elif match.group(1).strip().lower() == "rpgvxace":
                             return "RPGVXace", 3
                         else:
-                            return match.group(1).strip(), 1
-            logging.warning("RTP value not found in Game.ini. Assuming Standard RTP (RPG XP).")
+                            logging.warning(f"Unknown RTP value found in Game.ini: {match.group(1)}")
+                for line in lines:
+                    match = re.match(r"\s*library\s*=\s*(.*)", line, re.IGNORECASE)
+                    if match:
+                        logging.info(f"Library value found.")
+                        match = re.search(r"RGSS(\d+)", match.group(1), re.IGNORECASE)
+                        if match:
+                            rtp_value = int(match.group(1)[0])
+                            if rtp_value == 1:
+                                return "Standard", 1
+                            elif rtp_value == 2:
+                                return "RPGVX", 2
+                            elif rtp_value == 3:
+                                return "RPGVXace", 3
+                            else:
+                                logging.warning(f"Unknown RTP value found in Game.ini: {match.group(1)[0]}")
+            logging.warning("RTP value not found in Game.ini, looking for dll files.")
         except FileNotFoundError:
             logging.error(f"Game.ini file not found in the folder: {folder_path}")
+        
+        try:
+            for file in os.listdir(folder_path):
+                if file.startswith("RGSS") and file.endswith(".dll"):
+                    match = re.search(r"(\d+)", file)
+                    if match:
+                        logging.info(f"RGSS DLL file found.")
+                        rtp_value = int(match.group(1)[0])
+                        if rtp_value == 1:
+                            return "Standard", 1
+                        elif rtp_value == 2:
+                            return "RPGVX", 2
+                        elif rtp_value == 3:
+                            return "RPGVXace", 3
+                        else:
+                            logging.warning(f"Unknown RTP value found in DLL file: {match.group(1)[0]}")
+            logging.warning("No RGSS DLL files found in the game folder, checking System folder.")
+        except FileNotFoundError as e:
+            logging.error(f"Game folder error: {e}")
+
+        system_path = os.path.join(folder_path, "System")
+        try:
+            for file in os.listdir(system_path):
+                if file.startswith("RGSS") and file.endswith(".dll"):
+                    match = re.search(r"(\d+)", file)
+                    if match:
+                        logging.info(f"RGSS DLL file found in System folder.")
+                        rtp_value = int(match.group(1)[0])
+                        if rtp_value == 1:
+                            return "Standard", 1
+                        elif rtp_value == 2:
+                            return "RPGVX", 2
+                        elif rtp_value == 3:
+                            return "RPGVXace", 3
+                        else:
+                            logging.warning(f"Unknown RTP value found in System folder: {match.group(1)[0]}")
+            logging.warning("No RGSS DLL files found in the System folder, assuming Standard RTP.")
+        except FileNotFoundError as e:
+            logging.warning(f"System folder not found in the folder: {e}")
+            logging.info("Assuming Standard RTP.")
+
         return "Standard", 1
 
     def check_and_unpack_game_en(self, folder_path):
@@ -663,6 +721,22 @@ class FolderPathApp(QMainWindow):
             logging.error("No folder selected.")
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
+        
+        logging.info("Setting you as owner of the game folder and permissions to 700 (You can read, write, execute).")
+        try:
+            subprocess.run(["chown", "-R", str(os.getuid()), folder_path], check=True)
+            logging.info("Changed ownership of the folder to the current user.")
+        except subprocess.CalledProcessError as e:
+            logging.error("Failed to change ownership of the folder: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to change ownership of the folder: {str(e)}")
+            return
+        try:
+            subprocess.run(["chmod", "-R", "700", folder_path], check=True)
+            logging.info("Changed permissions of the folder to 700.")
+        except subprocess.CalledProcessError as e:
+            logging.error("Failed to change permissions of the folder: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to change permissions of the folder: {str(e)}")
+            return
 
         if self.check_package_json(folder_path):
             logging.info("Launching game using NWJS.")
@@ -675,6 +749,8 @@ class FolderPathApp(QMainWindow):
 
             if self.cheat_menu_checkbox.isChecked():
                 self.add_cheat_menu(folder_path)
+            else:
+                self.remove_cheat_menu(folder_path)
             
             self.launch_nwjs_game(folder_path)
         elif self.check_game_ini(folder_path):
@@ -1468,14 +1544,14 @@ class FolderPathApp(QMainWindow):
         cheat_menu_js_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js')
         cheat_menu_css_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css')
         if os.path.exists(www_folder_path) and os.path.isdir(www_folder_path):
-            logging.info("The 'www' folder exists in the selected folder.")
+            logging.info("The 'www' folder exists in the selected folder, likely RPG MV.")
             if self.modify_MV_main_js(os.path.join(www_folder_path, 'js', 'main.js')):
                 logging.info("RPG MV main.js has been patched with cheat menu.")
                 self.copy_cheat_files(www_folder_path)
             else:
                 logging.info("RPG MV main.js has already been patched with cheat menu.")
         else:
-            logging.warning("The 'www' folder does not exist in the selected folder.")
+            logging.info("The 'www' folder does not exist in the selected folder, likely RPG MZ.")
             if self.modify_MZ_main_js(os.path.join(folder_path, 'js', 'main.js')):
                 logging.info("RPG MZ main.js has been patched with cheat menu.")
                 self.copy_cheat_files(folder_path)
@@ -1488,6 +1564,34 @@ class FolderPathApp(QMainWindow):
         shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js'), plugins_folder)
         shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css'), plugins_folder)
         logging.info("Cheat_Menu.js and Cheat_Menu.css copied to %s", plugins_folder)
+    
+    def remove_cheat_menu(self, folder_path):
+        www_folder_path = os.path.join(folder_path, "www")
+        if os.path.exists(www_folder_path) and os.path.isdir(www_folder_path):
+            logging.info("The 'www' folder exists in the selected folder, likely RPG MV.")
+            if self.unmodify_MV_main_js(os.path.join(www_folder_path, 'js', 'main.js')):
+                logging.info("RPG MV main.js has been unpatched from cheat menu.")
+                self.remove_cheat_files(www_folder_path)
+            else:
+                logging.info("RPG MV main.js has not been patched with cheat menu.")
+        else:
+            logging.info("The 'www' folder does not exist in the selected folder, likely RPG MZ.")
+            if self.unmodify_MZ_main_js(os.path.join(folder_path, 'js', 'main.js')):
+                logging.info("RPG MZ main.js has been unpatched from cheat menu.")
+                self.remove_cheat_files(folder_path)
+            else:
+                logging.info("RPG MZ main.js has not been patched with cheat menu.")
+    
+    def remove_cheat_files(self, target_folder):
+        plugins_folder = os.path.join(target_folder, 'js', 'plugins')
+        cheat_menu_js_path = os.path.join(plugins_folder, 'Cheat_Menu.js')
+        cheat_menu_css_path = os.path.join(plugins_folder, 'Cheat_Menu.css')
+        if os.path.exists(cheat_menu_js_path):
+            os.remove(cheat_menu_js_path)
+            logging.info("Removed Cheat_Menu.js from %s", plugins_folder)
+        if os.path.exists(cheat_menu_css_path):
+            os.remove(cheat_menu_css_path)
+            logging.info("Removed Cheat_Menu.css from %s", plugins_folder)
 
     def modify_MV_main_js(self, file_path):
         try:
@@ -1554,6 +1658,72 @@ class FolderPathApp(QMainWindow):
         else:
             logging.error('scriptUrls array not found in main.js.')
             return False
+    
+    def unmodify_MV_main_js(self, file_path):
+        try:
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+        except Exception as e:
+            logging.error("Failed to read main.js: %s", str(e))
+            return False
+
+        lines_to_remove = [
+            "PluginManager._path= 'js/plugins/';\n",
+            "PluginManager.loadScript('Cheat_Menu.js');\n"
+        ]
+
+        if not any(line in lines for line in lines_to_remove):
+            logging.info("Cheat menu lines not present in main.js")
+            return False
+
+        updated_lines = [line for line in lines if line not in lines_to_remove]
+
+        try:
+            with open(file_path, 'w') as file:
+                file.writelines(updated_lines)
+            logging.info("Cheat menu lines removed successfully.")
+        except Exception as e:
+            logging.error("Failed to write main.js: %s", str(e))
+            return False
+
+        return True
+    
+    def unmodify_MZ_main_js(self, file_path):
+        new_url = 'js/plugins/Cheat_Menu.js'
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+        except Exception as e:
+            logging.error("Failed to read main.js: %s", str(e))
+            return False
+
+        script_urls_pattern = re.compile(r'const scriptUrls = \[(.*?)\];', re.DOTALL)
+        match = script_urls_pattern.search(content)
+
+        if not match:
+            logging.error('scriptUrls array not found in main.js.')
+            return False
+
+        script_urls_content = match.group(1)
+        if new_url not in script_urls_content:
+            logging.info("Cheat menu URL not present in main.js")
+            return False
+
+        new_script_urls_content = re.sub(
+            r"\s*\"" + re.escape(new_url) + r"\",,?\n?", '',
+            script_urls_content
+        )
+        new_content = content[:match.start(1)] + new_script_urls_content + content[match.end(1):]
+
+        try:
+            with open(file_path, 'w') as file:
+                file.write(new_content)
+            logging.info("Cheat menu URL removed successfully.")
+        except Exception as e:
+            logging.error("Failed to write main.js: %s", str(e))
+            return False
+
+        return True
 
     def optimize_space(self):
         files_to_remove = [
