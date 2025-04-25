@@ -1502,7 +1502,9 @@ class FolderPathApp(QMainWindow):
 
     def uninstall_nwjs(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v))]
+        #only keep the directories that are actually versions (starting with "v")
+
+        versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")]
 
         version, ok = self.show_version_selection_dialog(versions)
         if ok and version:
