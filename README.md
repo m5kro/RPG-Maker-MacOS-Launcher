@@ -71,11 +71,5 @@ Credit to Orochimarufan for the Kawariki Patches <br>
 https://github.com/Orochimarufan/Kawariki <br>
 <br>
 # Donations
-Bitcoin Wallet:<br>
-bc1qup498tqtm55zav2ckjyhlq8qnd0xmwjnvs7fa3<br>
-<br>
-Bitcoin Lightning Wallet (not an email address!):<br>
-m5kro@speed.app<br>
-<br>
 Ethereum Wallet:<br>
 0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
