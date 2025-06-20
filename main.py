@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "2.5"
+current_version = "3.0"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -176,10 +176,10 @@ class FolderPathApp(QMainWindow):
             "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
             "7. Click 'Uninstall NWJS Version' to remove an installed version of NWJS.\n"
             "_____________________________________________________________________________\n"
-            "RPG Maker XP, VX, and VX Ace games:\n\n"
-            "1. Move game folder to anywhere but the 'Downloads' folder.\n\n"
+            "RPG Maker 2000, 2003, XP, VX, and VX Ace games:\n\n"
+            "1. Move game folder to anywhere but the 'Downloads' folder. (XP, VX, VX Ace only)\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
-            "3. Click 'Start Game' to launch the game using MKXP-Z. You may be prompted to install MKXP-Z."
+            "3. Click 'Start Game' to launch the game. You may be prompted to install MKXP-Z or EasyRPG."
         )
         
         dialog = QDialog(self)
@@ -198,24 +198,26 @@ class FolderPathApp(QMainWindow):
 
         dialog.exec()
 
+    # <3
     def show_credits(self):
-        instructions = (
+        credits = (
             "Special Thanks To:\n\n"
             "lecrolonk - Donator\n\n"
             "mkxp-z maintainers - MKXP-Z\n\n"
             "Andmi Kuzgri - Save Editor Online\n\n"
             "emerladCoder - Cheat Menu Plugin\n\n"
             "SynthFont developers - Soundfont\n\n"
-            "Orochimarufan - Kawariki Patches"
+            "Orochimarufan - Kawariki Patches\n\n"
+            "EasyRPG Team - EasyRPG Player"
         )
         
         dialog = QDialog(self)
-        dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 310)
+        dialog.setWindowTitle("Credits")
+        dialog.resize(650, 340)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
-        text_edit.setPlainText(instructions)
+        text_edit.setPlainText(credits)
         text_edit.setReadOnly(True)
         layout.addWidget(text_edit)
 
@@ -264,6 +266,7 @@ class FolderPathApp(QMainWindow):
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
     
+    # Remove old MKXP-Z configuration files every update
     def remove_configs(self):
         enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
         advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
@@ -457,6 +460,7 @@ class FolderPathApp(QMainWindow):
                 return False
         return True
 
+    # RTP stands for "Run Time Package", which is a set of resources required by RPG Maker VX Ace, VX, and XP games
     def check_RTP_installed(self):
         rtp_folder = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP")
         if not os.path.exists(rtp_folder):
@@ -472,6 +476,7 @@ class FolderPathApp(QMainWindow):
                 return False
         return True
     
+    # Soundfont is a file that contains audio samples used for MIDI playback in RPG Maker games
     def check_soundfont_installed(self):
         soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
         if not os.path.exists(soundfont_path):
@@ -489,6 +494,7 @@ class FolderPathApp(QMainWindow):
                 return False
         return True
     
+    # Kawariki is a set of patches that improve compatability with RPG Maker games by supplying missing API functions
     def check_kawariki_installed(self):
         kawariki_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/kawariki/preload.rb")
         if not os.path.exists(kawariki_path):
@@ -506,6 +512,23 @@ class FolderPathApp(QMainWindow):
                 return False
         return True
     
+    def check_easyrpg_installed(self):
+        easyrpg_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app")
+        if not os.path.exists(easyrpg_path):
+            install_response = QMessageBox.question(
+                self, "EasyRPG Not Found", 
+                "EasyRPG is required but not found. Would you like to install it now?", 
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if install_response == QMessageBox.Yes:
+                self.install_easyrpg()
+                return True
+            else:
+                logging.info("EasyRPG installation canceled by the user.")
+                QMessageBox.information(self, "Installation Canceled", "EasyRPG installation was canceled.")
+                return False
+        return True
+    
     def check_mkxpz_update(self):
         try:
             response = requests.get("https://api.github.com/repos/m5kro/mkxp-z/commits/dev", timeout=1)
@@ -519,6 +542,7 @@ class FolderPathApp(QMainWindow):
             logging.error("Failed to fetch latest commit SHA: %s", str(e))
             return last_commit_sha
 
+    # NWJS version selector
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         if os.path.exists(applications_dir):
@@ -546,13 +570,15 @@ class FolderPathApp(QMainWindow):
             self.last_selected_folder = folder_path
             logging.info("Selected folder path: %s", folder_path)
             
-            if not self.check_package_json(folder_path):
-                logging.error("No package.json found in the selected folder.")
-                if self.check_game_ini(folder_path):
-                    logging.info("Game.ini file found in the folder.")
-                else:
-                    logging.error("No Game.ini file found in the selected folder.")
-                    QMessageBox.critical(self, "Error", "No package.json or Game.ini file found in the selected folder.")
+            if self.check_package_json(folder_path):
+                logging.info("Package.json found in the selected folder.")
+            elif self.check_game_ini(folder_path):
+                logging.info("Game.ini file found in the folder.")
+            elif self.check_RTP_RT(folder_path):
+                logging.info("RTP_RT files found in the folder.")
+            else:
+                logging.error("No RPG Maker files found in the selected folder.")
+                QMessageBox.critical(self, "Error", "No package.json, Game.ini, or RPG_RT files found in the selected folder.")
         self.save_settings()
         self.update_selected_folder_label()
         self.check_start_game_button()
@@ -581,6 +607,8 @@ class FolderPathApp(QMainWindow):
             self.start_game_button.setEnabled(False)
             self.export_button.setEnabled(False)
 
+    # Some MV and MZ games don't include a name inside package.json, so we patch it with a temporary name
+    # This is a requirement for newer versions of NWJS to launch the game
     def check_package_json(self, folder_path):
         file_path = os.path.join(folder_path, 'package.json')
         if os.path.exists(file_path):
@@ -604,10 +632,23 @@ class FolderPathApp(QMainWindow):
             logging.error("File does not exist.")
             return False
 
+    # Game.ini is a configuration file used by RPG Maker XP, VX, and VX Ace games
     def check_game_ini(self, folder_path):
         game_ini_path = os.path.join(folder_path, "Game.ini")
         return os.path.exists(game_ini_path)
     
+    # Check for any files named RTP_RT to indicate it's RPG 2000 or RPG 2003
+    def check_RTP_RT(self, folder_path):
+        if os.path.exists(folder_path):
+            for file in os.listdir(folder_path):
+                full_path = os.path.join(folder_path, file)
+                if os.path.isfile(full_path) and file.startswith("RPG_RT"):
+                    return True
+        else:
+            logging.error(f"Folder does not exist: {folder_path}")    
+        return False
+    
+    # This function checks the RTP value in the Game.ini file or RGSS DLL files to set the correct RTP version
     def get_rtp_value(self, folder_path):
         game_ini_path = os.path.join(folder_path, "Game.ini")
         try:
@@ -684,8 +725,11 @@ class FolderPathApp(QMainWindow):
             logging.warning(f"System folder not found in the folder: {e}")
             logging.info("Assuming Standard RTP.")
 
+        # If no RTP value is found, default to Standard RTP (RPG Maker XP)
         return "Standard", 1
 
+    # Some japanese RPG Maker games use game_en.exe to patch the game with the English version
+    # They need to be extracted using evbunpack and the files copied to the game folder
     def check_and_unpack_game_en(self, folder_path):
         game_exe = None
 
@@ -722,6 +766,7 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
         
+        # Giving ownership of the game folder to the current user to bypass permission issues because apple can't let us have nice things
         logging.info("Setting you as owner of the game folder and permissions to 700 (You can read, write, execute).")
         try:
             subprocess.run(["chown", "-R", str(os.getuid()), folder_path], check=True)
@@ -756,9 +801,12 @@ class FolderPathApp(QMainWindow):
         elif self.check_game_ini(folder_path):
             logging.info("Launching game using MKXPZ.")
             self.launch_mkxpz_game(folder_path)
+        elif self.check_RTP_RT(folder_path):
+            logging.info("Launching game using EasyRPG.")
+            self.launch_easyrpg_game(folder_path)
         else:
-            logging.error("Neither package.json nor Game.ini files found in the folder.")
-            QMessageBox.critical(self, "Error", "No valid game file (package.json or Game.ini) found in the selected folder.")
+            logging.error("No Package.json, Game.ini, or RTP_RT files found in the folder.")
+            QMessageBox.critical(self, "Error", "No valid game file (package.json, Game.ini, or RTP_RT) found in the selected folder.")
 
     def launch_nwjs_game(self, folder_path):
         selected_version = self.version_selector.currentText()
@@ -770,6 +818,7 @@ class FolderPathApp(QMainWindow):
         nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
         nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
 
+        # Older versions of NWJS don't have native arm so rosetta is required
         run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
         if os.path.exists(run_with_rosetta_file):
             subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path])
@@ -795,6 +844,7 @@ class FolderPathApp(QMainWindow):
         enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
         advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
 
+        # Apply default settings if the files do not exist
         if not os.path.exists(enabled_settings_file):
             with open(enabled_settings_file, 'w') as file:
                 json.dump(default_enabled_settings, file, indent=4)
@@ -805,6 +855,7 @@ class FolderPathApp(QMainWindow):
                 json.dump(default_advanced_settings, file, indent=4)
             logging.info("Created mkxpz-advanced.json with default values.")
 
+        # Load the advanced settings
         with open(enabled_settings_file, 'r') as file:
             enabled_settings = json.load(file)
 
@@ -866,6 +917,26 @@ class FolderPathApp(QMainWindow):
         except Exception as e:
             logging.error("Failed to launch MKXPZ: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch MKXPZ: {str(e)}")
+    
+    def launch_easyrpg_game(self, folder_path):
+        easyrpg_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app/Contents/MacOS/EasyRPG Player")
+        if not self.check_easyrpg_installed():
+            logging.error("EasyRPG Player not found at %s", easyrpg_executable_path)
+            QMessageBox.critical(self, "Error", "EasyRPG Player not found. Please install it first.")
+            return
+        
+        try:
+            # EasyRPG only has an intel version, so Rosetta is required on Apple Silicon Macs
+            arch = "arm64" if platform.machine() == "arm64" else "x64"
+            if arch == "arm64":
+                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path])
+                logging.info("EasyRPG game launched from folder: %s using Rosetta", folder_path)
+            else:
+                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path])
+                logging.info("EasyRPG game launched from folder: %s", folder_path)
+        except Exception as e:
+            logging.error("Failed to launch EasyRPG: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
 
     def export_standalone_app(self):
         app_name, ok = self.get_app_name()
@@ -1106,6 +1177,7 @@ class FolderPathApp(QMainWindow):
         app_name = line_edit.text().strip() if line_edit.text().strip() else "Game Name"
         return app_name, result == QDialog.Accepted
 
+    # Install NWJS versions, multiple versions can be installed
     def install_nwjs(self):
         URL = "https://nwjs.io/versions"
         BASE_DIR = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
@@ -1204,7 +1276,9 @@ class FolderPathApp(QMainWindow):
             self.load_settings()
             self.check_start_game_button()
 
+    # Install MKXP-Z, updates will be checked automatically
     def install_mkxpz(self):
+        # The URL for the MKXP-Z universal build is under my fork because it needs to be built manually
         URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/Z-universal.zip"
         zip_file_path = "/tmp/Z-universal.zip"
         target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
@@ -1281,6 +1355,7 @@ class FolderPathApp(QMainWindow):
             logging.error("Error installing MKXPZ: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install MKXPZ: {str(e)}")
     
+    # Install RTP (Run Time Package) for RPG Maker games
     def install_RTP(self):
         URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/RTP.zip"
         zip_file_path = "/tmp/RTP.zip"
@@ -1345,6 +1420,7 @@ class FolderPathApp(QMainWindow):
             logging.error("Error installing RTP: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install RTP: {str(e)}")
 
+    # Install soundfont for RPG Maker games
     def download_soundfont(self):
         URL = "https://musical-artifacts.com/artifacts/841/GMGSx.SF2"
         soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
@@ -1404,6 +1480,7 @@ class FolderPathApp(QMainWindow):
         else:
             logging.info("Soundfont GMGSx.SF2 already exists at %s", soundfont_path)
     
+    # Install Kawariki patches for RPG Maker games
     def download_kawariki_patches(self):
         URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/kawariki.zip"
         zip_file_path = "/tmp/kawariki.zip"
@@ -1466,6 +1543,77 @@ class FolderPathApp(QMainWindow):
         except Exception as e:
             logging.error("Error installing Kawariki patches: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install Kawariki patches: {str(e)}")
+    
+    # Install EasyRPG Player for RPG Maker 2000/2003 games
+    def install_easyrpg(self):
+        URL="https://ci.easyrpg.org/downloads/macos/EasyRPG-Player-macos.app.zip"
+        zip_file_path = "/tmp/EasyRPG-Player-macos.app.zip"
+        target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
+        try:
+            response = requests.get(URL, stream=True)
+            if response.status_code != 200:
+                logging.error("Failed to download EasyRPG Player.")
+                QMessageBox.critical(self, "Error", "Failed to download EasyRPG Player.")
+                return
+
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded_size = 0
+            chunk_size = 1024  # 1KB
+
+            progress_dialog = QProgressDialog("Downloading EasyRPG Player...", "Cancel", 0, total_size, self)
+            progress_dialog.setWindowModality(Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.show()
+
+            start_time = QDateTime.currentDateTime()
+            canceled = False
+
+            with open(zip_file_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        progress_dialog.setValue(downloaded_size)
+
+                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
+
+                        if elapsed_time > 0:
+                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
+                        else:
+                            download_speed = 0
+
+                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
+                                                     f"Speed: {download_speed:.2f} MB/s")
+
+                        if progress_dialog.wasCanceled():
+                            canceled = True
+                            logging.info("Download canceled by user.")
+                            break
+
+            if canceled:
+                os.remove(zip_file_path)
+                QMessageBox.information(self, "EasyRPG Player Installation", "EasyRPG Player installation canceled.")
+                return
+
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(os.path.dirname(target_dir))
+            logging.info("EasyRPG Player extracted successfully to %s", target_dir)
+
+            os.remove(zip_file_path)
+            easyrpg_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app/Contents/MacOS/EasyRPG Player")
+            try:
+                subprocess.run(["chmod", "+x", easyrpg_executable_path], check=True)
+                logging.info("Set executable permissions for %s", easyrpg_executable_path)
+            except subprocess.CalledProcessError as e:
+                logging.error("Failed to set executable permissions: %s", str(e))
+                QMessageBox.critical(self, "Error", f"Failed to set executable permissions: {str(e)}")
+                return
+
+            progress_dialog.close()
+            QMessageBox.information(self, "EasyRPG Player Installation", "EasyRPG Player installed successfully.")
+        except Exception as e:
+            logging.error("Error installing EasyRPG Player: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to install EasyRPG Player: {str(e)}")
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
@@ -1502,7 +1650,7 @@ class FolderPathApp(QMainWindow):
 
     def uninstall_nwjs(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        #only keep the directories that are actually versions (starting with "v")
+        # Only keep the directories that are actually versions (starting with "v")
 
         versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")]
 
@@ -1541,6 +1689,7 @@ class FolderPathApp(QMainWindow):
             logging.error(f"Failed to open: {str(e)}")
             QMessageBox.critical(self, "Error", f"Failed to open: {str(e)}")
 
+    # Add or remove the cheat menu for RPG Maker MV and MZ games
     def add_cheat_menu(self, folder_path):
         www_folder_path = os.path.join(folder_path, "www")
         cheat_menu_js_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js')
@@ -1727,6 +1876,8 @@ class FolderPathApp(QMainWindow):
 
         return True
 
+    # Optimize space by removing unnecessary files and folders that are only used by windows
+    # RPG MV and MZ games only
     def optimize_space(self):
         files_to_remove = [
             "credits.html", "d3dcompiler_47.dll", "ffmpeg.dll", "icudtl.dat", "libEGL.dll",

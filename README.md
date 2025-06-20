@@ -13,7 +13,7 @@ Plan/TODO (no particular order)
 8. ❌ Better looking UI<br>
 9. ✅ Better looking Icon<br>
 10. ✅ Save editor<br>
-11. ✅ mkxp-z (support for Rpg Maker XP / VX / VX Ace)<br>
+11. ✅ mkxp-z (support for RPG Maker XP / VX / VX Ace)<br>
 12. ✅ Export non MV or MZ game as standalone app<br>
 13. ✅ Add Midi support<br>
 14. ✅ Add advanced options for mkxp-z<br>
@@ -23,13 +23,16 @@ Plan/TODO (no particular order)
 18. ✅ Detect mkxp-z updates<br>
 19. ✅ Better RPG maker version detector<br>
 20. ✅ Fix possible file permissions issue<br>
-21. ✅ Remove cheat engine when untoggled
+21. ✅ Remove cheat engine when untoggled<br>
+22. ✅ EasyRPG (support for RPG Maker 2000 / 2003)<br>
+23. ❌ Uninstall button for everything<br>
+24. ❌ Advanced options for EasyRPG
 
 # How it works
-1. Downloads nwjs and mkxp-z
-2. Checks package.json or Game.ini
+1. Downloads nwjs, mkxp-z, and EasyRPG
+2. Checks package.json, Game.ini, or RTP_RT
 3. Unpacks game_en.exe if it exists
-4. Points nwjs or mkxp-z to directory
+4. Points nwjs, mkxp-z, or EasyRPG to directory
 5. Launches game
 # How to build
 Native version (Specifically x64 or arm64 depending on your system):
@@ -69,6 +72,9 @@ https://musical-artifacts.com/artifacts/841 <br>
 <br>
 Credit to Orochimarufan for the Kawariki Patches <br>
 https://github.com/Orochimarufan/Kawariki <br>
+<br>
+Credit to EasyRPG team for EasyRPG Player<br>
+https://easyrpg.org/player/downloads/#release-macos<br>
 <br>
 # Donations
 Ethereum Wallet:<br>
