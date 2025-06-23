@@ -1,0 +1,2 @@
+#!/bin/sh
+"${0%/*}/EasyRPG Player.app/Contents/MacOS/EasyRPG Player" --window --project-path "${0%/*}/game/"

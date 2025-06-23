@@ -1147,10 +1147,58 @@ class FolderPathApp(QMainWindow):
                 progress_dialog.close()
                 QMessageBox.information(self, "Export Complete", "MKXPZ standalone app exported successfully.")
                 logging.info("MKXPZ standalone app exported successfully to %s", destination_folder)
+            
+            elif self.check_RTP_RT(folder_path):
+                # EasyRPG export process
+                easyrpg_app_src = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app")
+                easyrpg_app_dst = os.path.join(destination_folder, app_name + ".app")
+
+                os.mkdir(easyrpg_app_dst)
+
+                game_dir = os.path.join(easyrpg_app_dst, "game")
+
+                total_files = sum([len(files) for _, _, files in os.walk(folder_path)])
+
+                progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
+                progress_dialog.setWindowModality(Qt.WindowModal)
+                progress_dialog.setMinimumDuration(0)
+                progress_dialog.show()
+
+                current_file_count = 0
+                for root, _, files in os.walk(folder_path):
+                    for file in files:
+                        s = os.path.join(root, file)
+                        d = os.path.join(game_dir, os.path.relpath(s, folder_path))
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        shutil.copy2(s, d)
+                        current_file_count += 1
+                        progress_dialog.setValue(current_file_count)
+                        progress_dialog.setLabelText(f"Copying over: {self.truncate_filename(file)}")
+                        QApplication.processEvents()
+                        if progress_dialog.wasCanceled():
+                            logging.info("Export canceled by user.")
+                            QMessageBox.information(self, "Export Canceled", "Export operation was canceled.")
+                            return
+
+                # Script required for standlone app operation
+                # Also apple why did you have to make this so awful. Why do I need to copy the entire app just to keep it executable?
+                progress_dialog.setLabelText("Copying support files...")
+                logging.info("Copying support files for EasyRPG standalone app...")
+                shutil.copy(os.path.join(os.path.dirname(__file__), 'EasyRPG-Standalone'), os.path.join(easyrpg_app_dst))
+                shutil.copytree(easyrpg_app_src, os.path.join(easyrpg_app_dst, "EasyRPG Player.app"), dirs_exist_ok=True)
+                logging.info("Support files copied successfully. Moving executables...")
+                shutil.move(os.path.join(easyrpg_app_dst, "EasyRPG-Standalone"), os.path.join(easyrpg_app_dst, app_name))
+                logging.info("Executables moved successfully. Setting permissions...")
+                subprocess.run(["chmod", "+x", os.path.join(easyrpg_app_dst, app_name)], check=True)
+                subprocess.run(["chmod", "+x", os.path.join(easyrpg_app_dst, "EasyRPG Player.app", "Contents", "MacOS", "EasyRPG Player")], check=True)
+
+                progress_dialog.close()
+                QMessageBox.information(self, "Export Complete", "EasyRPG standalone app exported successfully.")
+                logging.info("EasyRPG standalone app exported successfully to %s", destination_folder)
 
             else:
-                logging.error("No valid game file (package.json or Game.ini) found in the selected folder.")
-                QMessageBox.critical(self, "Error", "No valid game file (package.json or Game.ini) found in the selected folder.")
+                logging.error("No valid game file (package.json, Game.ini, or RTP_RT) found in the selected folder.")
+                QMessageBox.critical(self, "Error", "No valid game file (package.json, Game.ini, or RTP_RT) found in the selected folder.")
 
         except Exception as e:
             logging.error("Error exporting standalone app: %s", str(e))
