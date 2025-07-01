@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.0"
+current_version = "3.0.1"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -84,7 +84,7 @@ class FolderPathApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("RPG Maker MV and MZ Launcher")
+        self.setWindowTitle("RPG Maker Launcher")
         self.resize(400, 200)
 
         self.central_widget = QWidget()
@@ -1227,7 +1227,7 @@ class FolderPathApp(QMainWindow):
 
     # Install NWJS versions, multiple versions can be installed
     def install_nwjs(self):
-        URL = "https://nwjs.io/versions"
+        URL = "https://nwjs.io/versions.json"
         BASE_DIR = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
 
         def download_and_install(version, arch, use_rosetta=False):
