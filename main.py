@@ -1132,7 +1132,7 @@ class FolderPathApp(QMainWindow):
                         mkxp_config["gameFolder"] = "./"
                         mkxp_config["RTP"] = [f"./{rtp_value}"]
                         mkxp_config["midiSoundFont"] = f"./{os.path.basename(soundfont_dst)}"
-                        mkxp_config["preloadScript"] = [f"./{os.path.join("kawariki", "preload.rb")}"]
+                        mkxp_config["preloadScript"] = [f"./{os.path.join('kawariki', 'preload.rb')}"]
 
                         with open(mkxp_json_path, 'w', encoding=encoding) as file:
                             json.dump(mkxp_config, file, indent=4)
