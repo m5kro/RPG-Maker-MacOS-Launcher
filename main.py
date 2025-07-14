@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.0.1"
+current_version = "3.1"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -65,6 +65,46 @@ default_advanced_settings = {
             "midiChorus": False, "midiReverb": False, "SESourceCount": 6, "BGMTrackCount": 1,
             "execName": "Game", "bindingNames": {"c": "Confirm", "b": "Cancel"},
             "dumpAtlas": False
+        }
+
+# EasyRPG advanced settings
+default_enabled_easyrpg_settings = {
+            "--autobattle-algo": False, "--enemyai-algo": False, "--config-path": False,
+            "--encoding": False, "--engine": False, "--font1": False, "--font1-size": False,
+            "--font2": False, "--font2-size": False, "--font-path": False, "--language": False,
+            "--load-game-id": False, "--log-file": False, "--new-game": False, "--no-log-color": False,
+            "--no-rtp": False, "--patch-antilag-switch": False, "--patch-common-this": False,
+            "--patch-direct-menu": False, "--patch-dynrpg": False, "--patch-easyrpg": False,
+            "--patch-key-patch": False, "--patch-maniac": False, "--patch-pic-unlock": False,
+            "--patch-rpg2k3-cmds": False, "--no-patch": False, "--record-input": False,
+            "--replay-input": False, "--rtp-path": False, "--save-path": False, "--seed": False,
+            "--fps-limit": False, "--no-fps-limit": False, "--game-resolution": False,
+            "--pause-focus-lost": False, "--no-pause-focus-lost": False, "--scaling": False,
+            "--show-fps": False, "--fps-render-window": False, "--no-show-fps": False,
+            "--stretch": False, "--no-stretch": False, "--vsync": False, "--no-vsync": False,
+            "--no-audio": False, "--music-volume": False, "--sound-volume": False,
+            "--soundfont": False, "--soundfont-path": False, "--battle-test": False,
+            "--hide-title": False, "--start-map-id": False, "--start-party": False,
+            "--start-position": False, "--test-play": False
+        }
+
+default_advanced_easyrpg_settings = {
+            "--autobattle-algo": "RPG_RT", "--enemyai-algo": "RPG_RT", "--config-path": "",
+            "--encoding": "", "--engine": "", "--font1": "", "--font1-size": 12,
+            "--font2": "", "--font2-size": 12, "--font-path": "", "--language": "",
+            "--load-game-id": "", "--log-file": "", "--new-game": False, "--no-log-color": False,
+            "--no-rtp": False, "--patch-antilag-switch": "", "--patch-common-this": False,
+            "--patch-direct-menu": "", "--patch-dynrpg": False, "--patch-easyrpg": False,
+            "--patch-key-patch": False, "--patch-maniac": 1, "--patch-pic-unlock": False,
+            "--patch-rpg2k3-cmds": False, "--no-patch": False, "--project-path": "",
+            "--record-input": "", "--replay-input": "", "--rtp-path": "", "--save-path": "",
+            "--seed": "", "--fps-limit": 60, "--no-fps-limit": False, "--game-resolution": "",
+            "--pause-focus-lost": False, "--no-pause-focus-lost": False, "--scaling": "",
+            "--show-fps": False, "--fps-render-window": False, "--no-show-fps": False,
+            "--stretch": False, "--no-stretch": False, "--vsync": True, "--no-vsync": False,
+            "--no-audio": False, "--music-volume": 100, "--sound-volume": 100, "--soundfont": "",
+            "--soundfont-path": "", "--battle-test": "", "--hide-title": False, "--start-map-id": "",
+            "--start-party": "", "--start-position": "", "--test-play": False
         }
 
 def check_appdir():
@@ -143,6 +183,9 @@ class FolderPathApp(QMainWindow):
         self.mkxpz_advanced_button = QPushButton("MKXP-Z Advanced Settings", self)
         self.layout.addWidget(self.mkxpz_advanced_button)
 
+        self.easyrpg_advanced_button = QPushButton("EasyRPG Advanced Settings", self)
+        self.layout.addWidget(self.easyrpg_advanced_button)
+
         self.open_log_button = QPushButton("Open Log", self)
         self.layout.addWidget(self.open_log_button)
 
@@ -153,6 +196,7 @@ class FolderPathApp(QMainWindow):
         self.export_button.clicked.connect(self.export_standalone_app)
         self.open_save_editor_button.clicked.connect(self.open_save_editor)
         self.mkxpz_advanced_button.clicked.connect(self.open_mkxpz_advanced_settings)
+        self.easyrpg_advanced_button.clicked.connect(self.open_easyrpg_advanced_settings)
         self.open_log_button.clicked.connect(self.open_log)
 
         self.update_version_selector()
@@ -167,7 +211,7 @@ class FolderPathApp(QMainWindow):
             "RPG Maker MV and MZ games:\n\n"
             "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
-            "3. Check Options:\n"
+            "3. Optional Options:\n"
             "   - 'Extract game_en.exe': Extracts the file and patches the game with the English version.\n"
             "   - 'Add Cheat Menu': Patch the game with a cheat menu (Press [1] key while in game).\n"
             "   - 'Optimize Space': Optimize the game folder size by removing the Windows version of NWJS.\n\n"
@@ -266,15 +310,21 @@ class FolderPathApp(QMainWindow):
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
     
-    # Remove old MKXP-Z configuration files every update
+    # Remove old configuration files every update
     def remove_configs(self):
         enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-mkxpz-settings.json")
         advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/mkxpz-advanced.json")
+        easyrpg_enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json")
+        easyrpg_advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json")
         if os.path.exists(enabled_settings_file):
             os.remove(enabled_settings_file)
         if os.path.exists(advanced_settings_file):
             os.remove(advanced_settings_file)
-        logging.info("Removed old MKXP-Z configuration files.")
+        if os.path.exists(easyrpg_enabled_settings_file):
+            os.remove(easyrpg_enabled_settings_file)
+        if os.path.exists(easyrpg_advanced_settings_file):
+            os.remove(easyrpg_advanced_settings_file)
+        logging.info("Removed old MKXP-Z and EasyRPG configuration files.")
 
     def open_mkxpz_advanced_settings(self):
         dialog = QDialog(self)
@@ -342,6 +392,74 @@ class FolderPathApp(QMainWindow):
         reset_button = QPushButton("Reset", dialog)
         save_button.clicked.connect(lambda: self.save_mkxpz_advanced_settings(enabled_settings_file, advanced_settings_file))
         reset_button.clicked.connect(self.reset_mkxpz_advanced_settings)
+
+        buttons_layout.addWidget(save_button)
+        buttons_layout.addWidget(reset_button)
+
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addWidget(scroll_area)
+        dialog_layout.addLayout(buttons_layout)
+        dialog.setLayout(dialog_layout)
+
+        dialog.exec()
+    
+    def open_easyrpg_advanced_settings(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("EasyRPG Advanced Settings")
+
+        dialog.resize(500, 700)
+
+        scroll_area = QScrollArea(dialog)
+        scroll_area.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_area.setWidget(scroll_content)
+
+        enabled_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json")
+        advanced_settings_file = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json")
+
+        if not os.path.exists(enabled_settings_file):
+            with open(enabled_settings_file, 'w') as file:
+                json.dump(default_enabled_easyrpg_settings, file, indent=4)
+            logging.info("Created enabled-easyrpg-settings.json with default values.")
+
+        if not os.path.exists(advanced_settings_file):
+            with open(advanced_settings_file, 'w') as file:
+                json.dump(default_advanced_easyrpg_settings, file, indent=4)
+            logging.info("Created easyrpg-advanced.json with default values.")
+
+        with open(enabled_settings_file, 'r') as file:
+            enabled_settings = json.load(file)
+        
+        with open(advanced_settings_file, 'r') as file:
+            advanced_settings = json.load(file)
+
+        optional_box = QGroupBox("Options", dialog)
+        optional_layout = QVBoxLayout(optional_box)
+
+        self.settings_widgets = {}
+        for key, enabled in enabled_settings.items():
+            group_box = QGroupBox(key, dialog)
+            group_layout = QFormLayout(group_box)
+
+            enabled_checkbox = QCheckBox("Enabled", group_box)
+            enabled_checkbox.setChecked(enabled == "True")
+            group_layout.addRow(enabled_checkbox)
+            enabled_checkbox.stateChanged.connect(partial(self.update_enabled_state, key, enabled_checkbox))
+
+            widget = self.create_setting_widget(advanced_settings[key], group_box)
+            group_layout.addRow("Value:", widget)
+
+            self.settings_widgets[key] = {"widget": widget, "enabled_checkbox": enabled_checkbox}
+            optional_layout.addWidget(group_box)
+
+        scroll_layout.addWidget(optional_box)
+
+        buttons_layout = QHBoxLayout()
+        save_button = QPushButton("Save", dialog)
+        reset_button = QPushButton("Reset", dialog)
+        save_button.clicked.connect(lambda: self.save_easyrpg_advanced_settings(enabled_settings_file, advanced_settings_file))
+        reset_button.clicked.connect(self.reset_easyrpg_advanced_settings)
 
         buttons_layout.addWidget(save_button)
         buttons_layout.addWidget(reset_button)
@@ -421,6 +539,65 @@ class FolderPathApp(QMainWindow):
 
             default_enabled = default_enabled_settings.get(key, False)
             default_value = default_advanced_settings.get(key)
+
+            if enabled_checkbox:
+                enabled_checkbox.setChecked(default_enabled == "True")
+
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(default_value)
+            elif isinstance(widget, QLineEdit):
+                widget.setText(str(default_value))
+            elif isinstance(widget, QPlainTextEdit):
+                if isinstance(default_value, list):
+                    widget.setPlainText("\n".join(map(str, default_value)))
+                elif isinstance(default_value, dict):
+                    widget.setPlainText(json.dumps(default_value, indent=4))
+    
+    def save_easyrpg_advanced_settings(self, enabled_settings_file, advanced_settings_file):
+        enabled_settings = {}
+        advanced_settings = {}
+
+        for key, controls in self.settings_widgets.items():
+            widget = controls["widget"]
+            enabled_checkbox = controls["enabled_checkbox"]
+
+            if key in default_enabled_easyrpg_settings and default_enabled_easyrpg_settings[key] == "Force":
+                enabled_settings[key] = "Force"
+            elif enabled_checkbox:
+                enabled_settings[key] = "True" if enabled_checkbox.isChecked() else "False"
+
+            # Save the current values of advanced settings based on widget types
+            if isinstance(widget, QCheckBox):
+                advanced_settings[key] = widget.isChecked()
+            elif isinstance(widget, QLineEdit):
+                value = widget.text()
+                if value.isdigit():
+                    advanced_settings[key] = int(value)
+                else:
+                    try:
+                        advanced_settings[key] = float(value)
+                    except ValueError:
+                        advanced_settings[key] = value
+            elif isinstance(widget, QPlainTextEdit):
+                text = widget.toPlainText().strip()
+                try:
+                    advanced_settings[key] = json.loads(text)
+                except json.JSONDecodeError:
+                    advanced_settings[key] = text.splitlines()
+
+        with open(enabled_settings_file, 'w') as file:
+            json.dump(enabled_settings, file, indent=4)
+        with open(advanced_settings_file, 'w') as file:
+            json.dump(advanced_settings, file, indent=4)
+        QMessageBox.information(self, "Settings Saved", "EasyRPG settings have been saved successfully.")
+
+    def reset_easyrpg_advanced_settings(self):
+        for key, controls in self.settings_widgets.items():
+            widget = controls["widget"]
+            enabled_checkbox = controls["enabled_checkbox"]
+
+            default_enabled = default_enabled_easyrpg_settings.get(key, False)
+            default_value = default_advanced_easyrpg_settings.get(key)
 
             if enabled_checkbox:
                 enabled_checkbox.setChecked(default_enabled == "True")
@@ -925,15 +1102,34 @@ class FolderPathApp(QMainWindow):
             QMessageBox.critical(self, "Error", "EasyRPG Player not found. Please install it first.")
             return
         
+        extra_options = []
+
+        if os.path.isfile(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json")) and os.path.isfile(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json")):
+            with open(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json"), 'r') as file:
+                enabled_settings = json.load(file)
+
+            with open(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json"), 'r') as file:
+                advanced_settings = json.load(file)
+
+            for key, enabled in enabled_settings.items():
+                if enabled in ["True", "Force"]:
+                    if advanced_settings[key] == True:
+                        extra_options.append(f"{key}")
+                    elif advanced_settings[key]:
+                        extra_options.append(f"{key}")
+                        extra_options.append(advanced_settings[key])
+        
         try:
             # EasyRPG only has an intel version, so Rosetta is required on Apple Silicon Macs
             arch = "arm64" if platform.machine() == "arm64" else "x64"
             if arch == "arm64":
-                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path])
+                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options)
                 logging.info("EasyRPG game launched from folder: %s using Rosetta", folder_path)
+                logging.info("Appended options: %s", extra_options)
             else:
-                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path])
+                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options)
                 logging.info("EasyRPG game launched from folder: %s", folder_path)
+                logging.info("Appended options: %s", extra_options)
         except Exception as e:
             logging.error("Failed to launch EasyRPG: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
@@ -1191,6 +1387,27 @@ class FolderPathApp(QMainWindow):
                 logging.info("Executables moved successfully. Setting permissions...")
                 subprocess.run(["chmod", "+x", os.path.join(easyrpg_app_dst, app_name)], check=True)
                 subprocess.run(["chmod", "+x", os.path.join(easyrpg_app_dst, "EasyRPG Player.app", "Contents", "MacOS", "EasyRPG Player")], check=True)
+
+                logging.info("Applying advanced settings...")
+
+                extra_options = ""
+
+                if os.path.isfile(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json")) and os.path.isfile(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json")):
+                    with open(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/enabled-easyrpg-settings.json"), 'r') as file:
+                        enabled_settings = json.load(file)
+
+                    with open(os.path.expanduser("~/Library/Application Support/RPGM-Launcher/easyrpg-advanced.json"), 'r') as file:
+                        advanced_settings = json.load(file)
+
+                    for key, enabled in enabled_settings.items():
+                        if enabled in ["True", "Force"]:
+                            if advanced_settings[key] == True:
+                                extra_options += f" {key}"
+                            elif advanced_settings[key]:
+                                extra_options += f" {key} \"{advanced_settings[key]}\""
+                
+                with open(os.path.join(easyrpg_app_dst, app_name),'a') as f:
+                    f.write(extra_options)
 
                 progress_dialog.close()
                 QMessageBox.information(self, "Export Complete", "EasyRPG standalone app exported successfully.")

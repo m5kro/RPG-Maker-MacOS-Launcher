@@ -4,7 +4,7 @@ Development for this launcher has been completed! Only bugfixes will be released
 <br>
 Plan/TODO (no particular order)
 1. ✅ Add nwjs version selected<br>
-2. ✅ Toggle for game_en.exe extractor (if for some reason you want to play in japanese?!)<br>
+2. ✅ Toggle for game_en.exe extractor<br>
 3. ✅ Toggle for cheat menu<br>
 4. ✅ Better logging incase something goes wrong<br>
 5. ✅ Remember last opened game<br>
@@ -19,15 +19,14 @@ Plan/TODO (no particular order)
 14. ✅ Add advanced options for mkxp-z<br>
 15. ✅ Apply advanced options and midi when exporting mkxp-z games <br>
 16. ✅ Use Kawariki patches for some windows API calls<br>
-17. ❌ Extract rgss#a files for VX Ace, VX, and XP games<br>
-18. ✅ Detect mkxp-z updates<br>
-19. ✅ Better RPG maker version detector<br>
-20. ✅ Fix possible file permissions issue<br>
-21. ✅ Remove cheat engine when untoggled<br>
-22. ✅ EasyRPG (support for RPG Maker 2000 / 2003)<br>
-23. ❌ Uninstall button for everything<br>
-24. ❌ Advanced options for EasyRPG<br>
-25. ✅ Export EasyRPG games as standalone
+17. ✅ Detect mkxp-z updates<br>
+18. ✅ Better RPG maker version detector<br>
+19. ✅ Fix possible file permissions issue<br>
+20. ✅ Remove cheat engine when untoggled<br>
+21. ✅ EasyRPG (support for RPG Maker 2000 / 2003)<br>
+22. ❌ Uninstall button for everything<br>
+23. ✅ Advanced options for EasyRPG<br>
+24. ✅ Export EasyRPG games as standalone
 
 # How it works
 1. Downloads nwjs, mkxp-z, and EasyRPG
