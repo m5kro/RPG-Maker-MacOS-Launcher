@@ -16,10 +16,12 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.1"
+current_version = "3.2"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
+latest_build_number = 0
+last_build_number = 0
 
 # Default settings for MKXP-Z
 default_enabled_settings = {
@@ -107,6 +109,9 @@ default_advanced_easyrpg_settings = {
             "--start-party": "", "--start-position": "", "--test-play": False
         }
 
+# Set up logging
+LOG_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/log.txt")
+
 def check_appdir():
     app_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
     if not os.path.exists(app_dir):
@@ -115,10 +120,7 @@ def check_appdir():
     with open(LOG_FILE, 'w') as file:
         file.write("")
 
-# Set up logging
-LOG_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/log.txt")
-
-class FolderPathApp(QMainWindow):
+class RPGMLauncher(QMainWindow):
     SETTINGS_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/settings.json")
 
     def __init__(self):
@@ -177,7 +179,7 @@ class FolderPathApp(QMainWindow):
         self.install_button = QPushButton("Install NWJS Version", self)
         self.layout.addWidget(self.install_button)
 
-        self.uninstall_button = QPushButton("Uninstall NWJS Version", self)
+        self.uninstall_button = QPushButton("Uninstall Component", self)
         self.layout.addWidget(self.uninstall_button)
 
         self.mkxpz_advanced_button = QPushButton("MKXP-Z Advanced Settings", self)
@@ -190,7 +192,7 @@ class FolderPathApp(QMainWindow):
         self.layout.addWidget(self.open_log_button)
 
         self.install_button.clicked.connect(self.install_nwjs)
-        self.uninstall_button.clicked.connect(self.uninstall_nwjs)
+        self.uninstall_button.clicked.connect(self.uninstall_menu)
         self.select_button.clicked.connect(self.select_folder)
         self.start_game_button.clicked.connect(self.start_game)
         self.export_button.clicked.connect(self.export_standalone_app)
@@ -218,7 +220,7 @@ class FolderPathApp(QMainWindow):
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
             "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
             "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
-            "7. Click 'Uninstall NWJS Version' to remove an installed version of NWJS.\n"
+            "7. Click 'Uninstall Component' to remove installed versions of NWJS or other components.\n"
             "_____________________________________________________________________________\n"
             "RPG Maker 2000, 2003, XP, VX, and VX Ace games:\n\n"
             "1. Move game folder to anywhere but the 'Downloads' folder. (XP, VX, VX Ace only)\n\n"
@@ -287,6 +289,8 @@ class FolderPathApp(QMainWindow):
                     config_version = settings.get('launcher_version', "")
                     global last_commit_sha
                     last_commit_sha = settings.get('last_commit_sha', "")
+                    global last_build_number
+                    last_build_number = settings.get('last_build_number', 0)
                     self.update_selected_folder_label()
             except Exception as e:
                 logging.error("Failed to load settings: %s", str(e))
@@ -305,7 +309,8 @@ class FolderPathApp(QMainWindow):
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder,
             'launcher_version': current_version,
-            'last_commit_sha': last_commit_sha
+            'last_commit_sha': last_commit_sha,
+            'last_build_number': last_build_number
         }
         with open(self.SETTINGS_FILE, 'w') as file:
             json.dump(settings, file, indent=4)
@@ -689,9 +694,11 @@ class FolderPathApp(QMainWindow):
                 return False
         return True
     
-    def check_easyrpg_installed(self):
+    def check_easyrpg_installed(self, warn=True):
         easyrpg_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app")
         if not os.path.exists(easyrpg_path):
+            if not warn:
+                return False
             install_response = QMessageBox.question(
                 self, "EasyRPG Not Found", 
                 "EasyRPG is required but not found. Would you like to install it now?", 
@@ -717,7 +724,23 @@ class FolderPathApp(QMainWindow):
             return latest_commit_sha
         except requests.RequestException as e:
             logging.error("Failed to fetch latest commit SHA: %s", str(e))
+            global last_commit_sha
             return last_commit_sha
+    
+    def check_easyrpg_update(self):
+        try:
+            response = requests.get("https://ci.easyrpg.org/job/player-macos/api/json", timeout=1)
+            response.raise_for_status()
+            data = response.json()
+            global latest_build_number
+            latest_build_number = data['builds'][0]['number']
+            logging.info("Latest EasyRPG build number: %d", latest_build_number)
+            return latest_build_number
+        except requests.RequestException as e:
+            logging.error("Failed to fetch latest EasyRPG build number: %s", str(e))
+            global last_build_number
+            return last_build_number
+
 
     # NWJS version selector
     def update_version_selector(self):
@@ -998,10 +1021,11 @@ class FolderPathApp(QMainWindow):
         # Older versions of NWJS don't have native arm so rosetta is required
         run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
         if os.path.exists(run_with_rosetta_file):
-            subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path])
+            subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
         else:
-            subprocess.Popen([nwjs_path, folder_path])
+            subprocess.Popen([nwjs_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
         logging.info("Game launched using NWJS version %s.", selected_version)
+        logging.info("NWJS log:")
 
     def launch_mkxpz_game(self, folder_path):
         if self.check_mkxpz_installed(warn=False):
@@ -1081,7 +1105,7 @@ class FolderPathApp(QMainWindow):
             with open(mkxpz_json_path, 'w', encoding=encoding) as file:
                 json.dump(mkxp_config, file, indent=4)
             logging.info("Updated mkxp.json with enabled settings.")
-            logging.info("Launching with gameFolder: %s, RTP: %s, midiSoundFont: %s, preloadScript: %s, rgssVersion: %s", mkxp_config.get("gameFolder"), mkxp_config.get("RTP"), mkxp_config.get("midiSoundFont"), mkxp_config.get("preloadScript"), mkxp_config.get("rgssVersion"))
+            logging.info("Full MKXP-Z configuration: %s", mkxp_config)
         except Exception as e:
             logging.error("Failed to update mkxp.json: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to update mkxp.json: {str(e)}")
@@ -1089,13 +1113,26 @@ class FolderPathApp(QMainWindow):
 
         mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
         try:
-            subprocess.Popen([mkxpz_executable_path, folder_path])
+            subprocess.Popen([mkxpz_executable_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
             logging.info("MKXPZ game launched from folder: %s", folder_path)
+            logging.info("MKXPZ log:")
         except Exception as e:
             logging.error("Failed to launch MKXPZ: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch MKXPZ: {str(e)}")
     
     def launch_easyrpg_game(self, folder_path):
+        if self.check_easyrpg_installed(warn=False):
+            global last_build_number
+            logging.info("Checking for EasyRPG updates.")
+            logging.info("Last build number: %d", last_build_number)
+            if last_build_number != self.check_easyrpg_update():
+                update_response = QMessageBox.question(self, "EasyRPG Update Available",
+                                                       "A new update is available for EasyRPG Player. Would you like to update now?",
+                                                       QMessageBox.Yes | QMessageBox.No)
+                if update_response == QMessageBox.Yes:
+                    self.uninstall_easyrpg(popup=False)
+                    self.install_easyrpg()
+
         easyrpg_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app/Contents/MacOS/EasyRPG Player")
         if not self.check_easyrpg_installed():
             logging.error("EasyRPG Player not found at %s", easyrpg_executable_path)
@@ -1123,13 +1160,15 @@ class FolderPathApp(QMainWindow):
             # EasyRPG only has an intel version, so Rosetta is required on Apple Silicon Macs
             arch = "arm64" if platform.machine() == "arm64" else "x64"
             if arch == "arm64":
-                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options)
+                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options, stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
                 logging.info("EasyRPG game launched from folder: %s using Rosetta", folder_path)
                 logging.info("Appended options: %s", extra_options)
+                logging.info("EasyRPG log:")
             else:
-                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options)
+                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options, stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
                 logging.info("EasyRPG game launched from folder: %s", folder_path)
                 logging.info("Appended options: %s", extra_options)
+                logging.info("EasyRPG log:")
         except Exception as e:
             logging.error("Failed to launch EasyRPG: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
@@ -1875,7 +1914,11 @@ class FolderPathApp(QMainWindow):
                 return
 
             progress_dialog.close()
+            global last_build_number
+            global latest_build_number
+            last_build_number = latest_build_number
             QMessageBox.information(self, "EasyRPG Player Installation", "EasyRPG Player installed successfully.")
+            
         except Exception as e:
             logging.error("Error installing EasyRPG Player: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install EasyRPG Player: {str(e)}")
@@ -1912,6 +1955,32 @@ class FolderPathApp(QMainWindow):
 
         result = dialog.exec()
         return result == QDialog.Accepted
+    
+    def uninstall_menu(self):
+        logging.info("Uninstall menu opened.")
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Uninstall Component")
+        layout = QVBoxLayout(dialog)
+        label = QLabel("Select the component to uninstall:", dialog)
+        layout.addWidget(label)
+        combo_box = QComboBox(dialog)
+        combo_box.addItems(["NWJS", "MKXP-Z", "EasyRPG Player", "ALL"])
+        layout.addWidget(combo_box)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        result = dialog.exec()
+        if result == QDialog.Accepted:
+            selected_option = combo_box.currentText()
+            if selected_option == "NWJS":
+                self.uninstall_nwjs()
+            elif selected_option == "MKXP-Z":
+                self.uninstall_mkxpz()
+            elif selected_option == "EasyRPG Player":
+                self.uninstall_easyrpg()
+            elif selected_option == "ALL":
+                self.uninstall_all()
 
     def uninstall_nwjs(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
@@ -1920,6 +1989,7 @@ class FolderPathApp(QMainWindow):
         versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")]
 
         version, ok = self.show_version_selection_dialog(versions)
+        logging.info("Uninstalling NWJS version: %s", version)
         if ok and version:
             target_dir = os.path.join(applications_dir, version)
             if os.path.exists(target_dir):
@@ -1934,6 +2004,71 @@ class FolderPathApp(QMainWindow):
             else:
                 logging.error("NWJS version %s not found.", version)
                 QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
+    
+    def uninstall_mkxpz(self):
+        logging.info("Uninstalling MKXP-Z and associated files...")
+        mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
+        RTP_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/RTP")
+        soundfont_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/GMGSx.SF2")
+        kawariki_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/kawariki")
+
+        if os.path.exists(mkxpz_path):
+            shutil.rmtree(mkxpz_path)
+            logging.info("MKXP-Z uninstalled successfully.")
+        else:
+            logging.error("MKXP-Z not found.")
+            QMessageBox.critical(self, "Error", "MKXP-Z not found.")
+        
+        if os.path.exists(RTP_path):
+            shutil.rmtree(RTP_path)
+            logging.info("RTP uninstalled successfully.")
+        else:
+            logging.error("RTP not found.")
+            QMessageBox.critical(self, "Error", "RTP not found.")
+        
+        if os.path.exists(soundfont_path):
+            os.remove(soundfont_path)
+            logging.info("Soundfont GMGSx.SF2 uninstalled successfully.")
+        else:
+            logging.error("Soundfont GMGSx.SF2 not found.")
+            QMessageBox.critical(self, "Error", "Soundfont GMGSx.SF2 not found.")
+        
+        if os.path.exists(kawariki_path):
+            shutil.rmtree(kawariki_path)
+            logging.info("Kawariki patches uninstalled successfully.")
+        else:
+            logging.error("Kawariki patches not found.")
+            QMessageBox.critical(self, "Error", "Kawariki patches not found.")
+        
+        QMessageBox.information(self, "Uninstall MKXP-Z", "MKXP-Z and associated files uninstalled successfully.")
+    
+    def uninstall_easyrpg(self, popup=True):
+        logging.info("Uninstalling EasyRPG Player...")
+        easyrpg_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app")
+
+        if os.path.exists(easyrpg_path):
+            shutil.rmtree(easyrpg_path)
+            logging.info("EasyRPG Player uninstalled successfully.")
+            if popup:
+                QMessageBox.information(self, "Uninstall EasyRPG Player", "EasyRPG Player uninstalled successfully.")
+        else:
+            logging.error("EasyRPG Player not found.")
+            QMessageBox.critical(self, "Error", "EasyRPG Player not found.")
+    
+    def uninstall_all(self):
+        if not QMessageBox.question(self, "Uninstall All", "Are you sure you want to uninstall all components?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            logging.info("Uninstall all canceled by user.")
+            return
+
+        logging.info("Uninstalling all components...")
+        applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
+        if os.path.exists(applications_dir):
+            shutil.rmtree(applications_dir)
+            logging.info("All components uninstalled successfully.")
+            QMessageBox.information(self, "Uninstall All", "All components uninstalled successfully.")
+        else:
+            logging.error("RPGM-Launcher directory not found.")
+            QMessageBox.critical(self, "Error", "RPGM-Launcher directory not found.")
 
     def open_save_editor(self):
         save_editor_url = "https://saveeditor.online/"
@@ -2209,7 +2344,7 @@ def main():
     sys.stderr = open(LOG_FILE, 'a')
     
     app = QApplication(sys.argv)
-    window = FolderPathApp()
+    window = RPGMLauncher()
     window.show()
     sys.exit(app.exec())
 

@@ -26,9 +26,10 @@ Plan/TODO (no particular order)
 19. ✅ Fix possible file permissions issue<br>
 20. ✅ Remove cheat engine when untoggled<br>
 21. ✅ EasyRPG (support for RPG Maker 2000 / 2003)<br>
-22. ❌ Uninstall button for everything<br>
+22. ✅ Uninstall button for everything<br>
 23. ✅ Advanced options for EasyRPG<br>
-24. ✅ Export EasyRPG games as standalone
+24. ✅ Export EasyRPG games as standalone<br>
+25. ✅ Detect EasyRPG updates
 
 # How it works
 1. Downloads nwjs, mkxp-z, and EasyRPG
