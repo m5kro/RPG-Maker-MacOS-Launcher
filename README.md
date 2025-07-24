@@ -2,34 +2,11 @@
 
 # RPG-Maker-MacOS-Launcher
 A launcher to natively play RPG maker MV, MZ, XP, VX, VX Ace, 2000, and 2003 games on MacOS!<br>
-Development for this launcher has been completed! Only bugfixes will be released if needed.<br>
+**Development for this launcher has been completed! Only bugfixes will be released if needed.**<br>
 <br>
-Plan/TODO (no particular order)
-1. ✅ Add nwjs version selected<br>
-2. ✅ Toggle for game_en.exe extractor<br>
-3. ✅ Toggle for cheat menu<br>
-4. ✅ Better logging incase something goes wrong<br>
-5. ✅ Remember last opened game<br>
-6. ❌ Look in directory(s) for a bunch of games<br>
-7. ✅ Export game as standalone app<br>
-8. ❌ Better looking UI<br>
-9. ✅ Better looking Icon<br>
-10. ✅ Save editor<br>
-11. ✅ mkxp-z (support for RPG Maker XP / VX / VX Ace)<br>
-12. ✅ Export non MV or MZ game as standalone app<br>
-13. ✅ Add Midi support<br>
-14. ✅ Add advanced options for mkxp-z<br>
-15. ✅ Apply advanced options and midi when exporting mkxp-z games <br>
-16. ✅ Use Kawariki patches for some windows API calls<br>
-17. ✅ Detect mkxp-z updates<br>
-18. ✅ Better RPG maker version detector<br>
-19. ✅ Fix possible file permissions issue<br>
-20. ✅ Remove cheat engine when untoggled<br>
-21. ✅ EasyRPG (support for RPG Maker 2000 / 2003)<br>
-22. ✅ Uninstall button for everything<br>
-23. ✅ Advanced options for EasyRPG<br>
-24. ✅ Export EasyRPG games as standalone<br>
-25. ✅ Detect EasyRPG updates
+# Donations
+Ethereum Wallet:<br>
+0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
 
 # How it works
 1. Downloads nwjs, mkxp-z, and EasyRPG
@@ -79,6 +56,4 @@ https://github.com/Orochimarufan/Kawariki <br>
 Credit to EasyRPG team for EasyRPG Player<br>
 https://easyrpg.org/player/downloads/#release-macos<br>
 <br>
-# Donations
-Ethereum Wallet:<br>
-0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
+
