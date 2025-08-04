@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.2"
+current_version = "3.2.1"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -204,6 +204,8 @@ class RPGMLauncher(QMainWindow):
         self.update_version_selector()
         self.load_settings()
         if current_version != config_version:
+            logging.info(f"Launcher version changed from {config_version} to {current_version}")
+            logging.info("Removing old configurations...")
             self.remove_configs()
         self.update_select_button_state()
         self.check_start_game_button()
@@ -822,7 +824,27 @@ class RPGMLauncher(QMainWindow):
 
             if 'name' in data and data['name'].strip() == '':
                 data['name'] = 'tempname'
-
+                logging.info("Updating package.json with temporary name 'tempname'.")
+                # Clear the tempname folder in ~/Library/Application Support/ so popup about version mismatch doesn't appear
+                logging.info("Clearing tempname folder in Application Support.")
+                tempname_folder = os.path.expanduser(f"~/Library/Application Support/tempname")
+                if os.path.exists(tempname_folder):
+                    try:
+                        shutil.rmtree(tempname_folder, ignore_errors=True)
+                        logging.info("tempname folder cleared successfully.")
+                    except Exception as e:
+                        logging.error(f"Error clearing tempname folder: {e}")
+            elif 'name' in data and data['name'].strip() != '':
+                logging.info(f"package.json already has a valid name: {data['name']}")
+                # Clear the possible named folder in ~/Library/Application Support/ so popup about version mismatch doesn't appear
+                name_folder = os.path.expanduser(f"~/Library/Application Support/{data['name']}")
+                if os.path.exists(name_folder):
+                    try:
+                        shutil.rmtree(name_folder, ignore_errors=True)
+                        logging.info(f"{data['name']} folder cleared successfully.")
+                    except Exception as e:
+                        logging.error(f"Error clearing {data['name']} folder: {e}")
+                        
             with open(file_path, 'w', encoding=encoding) as file:
                 json.dump(data, file, indent=4)
 
@@ -1014,6 +1036,15 @@ class RPGMLauncher(QMainWindow):
             logging.error("No NWJS version selected.")
             QMessageBox.critical(self, "Error", "No NWJS version selected.")
             return
+        
+        logging.info("Cleaning up nwjs temporary files.")
+        temp_dir = os.path.expanduser("~/Library/Application Support/nwjs")
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                logging.info("Temporary NWJS files cleaned up successfully.")
+            except Exception as e:
+                logging.error(f"Error cleaning up NWJS temporary files: {e}")
 
         nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
         nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
@@ -2342,6 +2373,10 @@ def main():
     # Redirect stdout and stderr to log file
     sys.stdout = open(LOG_FILE, 'a')
     sys.stderr = open(LOG_FILE, 'a')
+
+    logging.info("Launcher version: %s", current_version)
+    logging.info("MacOS version: %s", platform.mac_ver()[0])
+    logging.info("MacOS architecture: %s", platform.machine())
     
     app = QApplication(sys.argv)
     window = RPGMLauncher()
