@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.2.1"
+current_version = "3.3"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -159,6 +159,9 @@ class RPGMLauncher(QMainWindow):
         self.optimize_space_checkbox = QCheckBox("Optimize Space", self)
         self.layout.addWidget(self.optimize_space_checkbox)
 
+        self.disable_protection_checkbox = QCheckBox("Disable Protection (Not Recommended)", self)
+        self.layout.addWidget(self.disable_protection_checkbox)
+
         self.selected_folder_label = QLabel("No folder selected", self)
         self.layout.addWidget(self.selected_folder_label)
 
@@ -218,7 +221,8 @@ class RPGMLauncher(QMainWindow):
             "3. Optional Options:\n"
             "   - 'Extract game_en.exe': Extracts the file and patches the game with the English version.\n"
             "   - 'Add Cheat Menu': Patch the game with a cheat menu (Press [1] key while in game).\n"
-            "   - 'Optimize Space': Optimize the game folder size by removing the Windows version of NWJS.\n\n"
+            "   - 'Optimize Space': Optimize the game folder size by removing the Windows version of NWJS.\n"
+            "   - 'Disable Protection': Allows child_process to be used and allows outbound connections.\n\n"
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
             "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
             "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
@@ -232,7 +236,7 @@ class RPGMLauncher(QMainWindow):
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 525)
+        dialog.resize(650, 530)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
@@ -283,6 +287,7 @@ class RPGMLauncher(QMainWindow):
                     self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
                     self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
                     self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
+                    self.disable_protection_checkbox.setChecked(settings.get('disable_protection', False))
                     last_version = settings.get('last_selected_version')
                     if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                         self.version_selector.setCurrentText(last_version)
@@ -308,6 +313,7 @@ class RPGMLauncher(QMainWindow):
             'extract_game_en': self.extract_checkbox.isChecked(),
             'add_cheat_menu': self.cheat_menu_checkbox.isChecked(),
             'optimize_space': self.optimize_space_checkbox.isChecked(),
+            'disable_protection': self.disable_protection_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder,
             'launcher_version': current_version,
@@ -844,7 +850,19 @@ class RPGMLauncher(QMainWindow):
                         logging.info(f"{data['name']} folder cleared successfully.")
                     except Exception as e:
                         logging.error(f"Error clearing {data['name']} folder: {e}")
-                        
+
+            # Add "bg-script": "bg.js" if protection is enabled
+            if not self.disable_protection_checkbox.isChecked():
+                data['bg-script'] = "bg.js"
+                logging.info("Protection enabled, adding bg-script entry to package.json.")
+            else: 
+                # If protection is disabled remove the bg-script entry
+                try:
+                    data.pop('bg-script', None)
+                    logging.info("Protection disabled, removing bg-script entry from package.json.")
+                except Exception as e:
+                    logging.info("Protection already disabled, bg-script entry not found.")
+
             with open(file_path, 'w', encoding=encoding) as file:
                 json.dump(data, file, indent=4)
 
@@ -981,6 +999,13 @@ class RPGMLauncher(QMainWindow):
         else:
             logging.error("game_en.exe not found in the directory")
 
+    def add_protection_script(self, folder_path):
+        # Copy the protection scripts to the game folder
+        shutil.copy(os.path.join(os.path.dirname(__file__), 'bg.js'), folder_path)
+        shutil.copy(os.path.join(os.path.dirname(__file__), 'disable-child.js'), folder_path)
+        shutil.copy(os.path.join(os.path.dirname(__file__), 'disable-net.js'), folder_path)
+        logging.info("Protection scripts added to the game folder.")
+
     def start_game(self):
         folder_path = self.last_selected_folder
         if not folder_path:
@@ -1019,6 +1044,9 @@ class RPGMLauncher(QMainWindow):
             else:
                 self.remove_cheat_menu(folder_path)
             
+            if not self.disable_protection_checkbox.isChecked():
+                self.add_protection_script(folder_path)
+
             self.launch_nwjs_game(folder_path)
         elif self.check_game_ini(folder_path):
             logging.info("Launching game using MKXPZ.")
