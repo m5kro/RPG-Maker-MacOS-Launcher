@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.3"
+current_version = "3.3.1"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -1243,6 +1243,13 @@ class RPGMLauncher(QMainWindow):
 
         folder_path = self.last_selected_folder
 
+        # Helper to detect paths within the destination .app
+        def _is_within(child_path: str, parent_path: str) -> bool:
+            child_abs = os.path.abspath(child_path)
+            parent_abs = os.path.abspath(parent_path)
+            # Ensure trailing separator for proper prefix check
+            return child_abs == parent_abs or child_abs.startswith(parent_abs + os.sep)
+
         try:
             if self.check_package_json(folder_path):
                 # NWJS export process
@@ -1265,7 +1272,16 @@ class RPGMLauncher(QMainWindow):
                 if self.optimize_space_checkbox.isChecked():
                     self.optimize_space()
 
-                total_files = sum([len(files) for _, _, files in os.walk(self.last_selected_folder)])
+                # Count files while skipping anything inside the destination .app
+                total_files = 0
+                for root, dirs, files in os.walk(self.last_selected_folder, topdown=True):
+                    # prune traversal into the destination app bundle (avoids infinite loop)
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), nwjs_app_dst)]
+                    # if somehow root itself is inside the app bundle, skip it
+                    if _is_within(root, nwjs_app_dst):
+                        continue
+                    total_files += len(files)
+
                 progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
                 progress_dialog.setWindowModality(Qt.WindowModal)
                 progress_dialog.setMinimumDuration(0)
@@ -1277,12 +1293,22 @@ class RPGMLauncher(QMainWindow):
                 os.makedirs(app_nw_dir, exist_ok=True)
 
                 current_file_count = 0
-                for root, _, files in os.walk(self.last_selected_folder):
+                for root, dirs, files in os.walk(self.last_selected_folder, topdown=True):
+                    # prune traversal into the destination app bundle (avoids infinite loop)
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), nwjs_app_dst)]
+                    if _is_within(root, nwjs_app_dst):
+                        continue
+
                     for file in files:
                         s = os.path.join(root, file)
+                        # also skip files that would be inside the destination app, just in case
+                        if _is_within(s, nwjs_app_dst):
+                            continue
+
                         d = os.path.join(app_nw_dir, os.path.relpath(s, self.last_selected_folder))
                         os.makedirs(os.path.dirname(d), exist_ok=True)
                         shutil.copy2(s, d)
+
                         current_file_count += 1
                         progress_dialog.setValue(current_file_count)
                         progress_dialog.setLabelText(f"Copying over: {self.truncate_filename(file)}")
@@ -1375,7 +1401,14 @@ class RPGMLauncher(QMainWindow):
 
                 game_dir = os.path.join(mkxpz_app_dst, "Contents", "Game")
 
-                total_files = sum([len(files) for _, _, files in os.walk(folder_path)])
+                total_files = 0
+                for root, dirs, files in os.walk(folder_path, topdown=True):
+                    # prune traversal into the destination app bundle
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), mkxpz_app_dst)]
+                    if _is_within(root, mkxpz_app_dst):
+                        continue
+                    # also ensure we don't count files inside the destination .app
+                    total_files += sum(1 for f in files if not _is_within(os.path.join(root, f), mkxpz_app_dst))
 
                 progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
                 progress_dialog.setWindowModality(Qt.WindowModal)
@@ -1383,9 +1416,17 @@ class RPGMLauncher(QMainWindow):
                 progress_dialog.show()
 
                 current_file_count = 0
-                for root, _, files in os.walk(folder_path):
+                for root, dirs, files in os.walk(folder_path, topdown=True):
+                    # prune traversal into the destination app bundle
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), mkxpz_app_dst)]
+                    if _is_within(root, mkxpz_app_dst):
+                        continue
+
                     for file in files:
                         s = os.path.join(root, file)
+                        if _is_within(s, mkxpz_app_dst):
+                            continue  # extra guard; skip anything inside the destination .app
+
                         d = os.path.join(game_dir, os.path.relpath(s, folder_path))
                         os.makedirs(os.path.dirname(d), exist_ok=True)
                         shutil.copy2(s, d)
@@ -1451,7 +1492,14 @@ class RPGMLauncher(QMainWindow):
 
                 game_dir = os.path.join(easyrpg_app_dst, "game")
 
-                total_files = sum([len(files) for _, _, files in os.walk(folder_path)])
+                total_files = 0
+                for root, dirs, files in os.walk(folder_path, topdown=True):
+                    # prune traversal into the destination app bundle
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), easyrpg_app_dst)]
+                    if _is_within(root, easyrpg_app_dst):
+                        continue
+                    # don't count files inside the destination .app
+                    total_files += sum(1 for f in files if not _is_within(os.path.join(root, f), easyrpg_app_dst))
 
                 progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
                 progress_dialog.setWindowModality(Qt.WindowModal)
@@ -1459,9 +1507,17 @@ class RPGMLauncher(QMainWindow):
                 progress_dialog.show()
 
                 current_file_count = 0
-                for root, _, files in os.walk(folder_path):
+                for root, dirs, files in os.walk(folder_path, topdown=True):
+                    # prune traversal into the destination app bundle
+                    dirs[:] = [d for d in dirs if not _is_within(os.path.join(root, d), easyrpg_app_dst)]
+                    if _is_within(root, easyrpg_app_dst):
+                        continue
+
                     for file in files:
                         s = os.path.join(root, file)
+                        if _is_within(s, easyrpg_app_dst):
+                            continue  # extra guard
+
                         d = os.path.join(game_dir, os.path.relpath(s, folder_path))
                         os.makedirs(os.path.dirname(d), exist_ok=True)
                         shutil.copy2(s, d)
