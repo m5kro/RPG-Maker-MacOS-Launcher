@@ -38,6 +38,7 @@ Universal2 version (works on both x64 or arm64):
 # Credits and Special Thanks
 Donators:<br>
 lecrolonk <br>
+athanadoc05 <br>
 <br>
 Credit to mkxp-z maintainers for mkxp-z <br>
 https://github.com/mkxp-z/mkxp-z <br>
