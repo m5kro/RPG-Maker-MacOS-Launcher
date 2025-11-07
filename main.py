@@ -255,6 +255,7 @@ class RPGMLauncher(QMainWindow):
         credits = (
             "Special Thanks To:\n\n"
             "lecrolonk - Donator\n\n"
+            "athanadoc05 - Donator\n\n"
             "mkxp-z maintainers - MKXP-Z\n\n"
             "Andmi Kuzgri - Save Editor Online\n\n"
             "emerladCoder - Cheat Menu Plugin\n\n"
@@ -265,7 +266,7 @@ class RPGMLauncher(QMainWindow):
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Credits")
-        dialog.resize(650, 340)
+        dialog.resize(650, 380)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
