@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.3.1"
+current_version = "3.3.2"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -2296,34 +2296,60 @@ class RPGMLauncher(QMainWindow):
     def modify_MZ_main_js(self, file_path):
         new_url = 'js/plugins/Cheat_Menu.js'
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
         except Exception as e:
             logging.error("Failed to read main.js: %s", str(e))
             return False
 
+        # Grab the inside of the scriptUrls array
         script_urls_pattern = re.compile(r'const scriptUrls = \[(.*?)\];', re.DOTALL)
         match = script_urls_pattern.search(content)
 
-        if match:
-            script_urls_content = match.group(1)
-            if new_url in script_urls_content:
-                logging.info("Cheat menu URL already present in main.js")
-                return False
-            else:
-                new_script_urls_content = f'    "{new_url}",\n' + script_urls_content
-                new_content = content[:match.start(1)] + new_script_urls_content + content[match.end(1):]
-
-                try:
-                    with open(file_path, 'w') as file:
-                        file.write(new_content)
-                    logging.info("main.js written successfully.")
-                except Exception as e:
-                    logging.error("Failed to write main.js: %s", str(e))
-                    return False
-                return True
-        else:
+        if not match:
             logging.error('scriptUrls array not found in main.js.')
+            return False
+
+        script_urls_content = match.group(1)
+
+        # Don’t add it twice
+        if new_url in script_urls_content:
+            logging.info("Cheat menu URL already present in main.js")
+            return False
+
+        # Find the rmmz_managers line (with whatever indentation / newline style)
+        managers_pattern = re.compile(r'([ \t]*)"js/rmmz_managers\.js",(\r?\n)')
+
+        def insert_after_managers(m: re.Match) -> str:
+            indent = m.group(1)   # indentation before "js/rmmz_managers.js"
+            newline = m.group(2)  # the newline used in the file (\n or \r\n)
+            # Keep the managers line, then add Cheat_Menu with the same indent/newline
+            return m.group(0) + f'{indent}"{new_url}",{newline}'
+
+        new_script_urls_content, count = managers_pattern.subn(
+            insert_after_managers,
+            script_urls_content,
+            count=1
+        )
+
+        if count == 0:
+            logging.error('rmmz_managers.js not found in scriptUrls array.')
+            return False
+
+        # Stitch everything back together
+        new_content = (
+            content[:match.start(1)]
+            + new_script_urls_content
+            + content[match.end(1):]
+        )
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as file:
+                file.write(new_content)
+            logging.info("main.js written successfully.")
+            return True
+        except Exception as e:
+            logging.error("Failed to write main.js: %s", str(e))
             return False
     
     def unmodify_MV_main_js(self, file_path):
@@ -2358,7 +2384,7 @@ class RPGMLauncher(QMainWindow):
     def unmodify_MZ_main_js(self, file_path):
         new_url = 'js/plugins/Cheat_Menu.js'
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
         except Exception as e:
             logging.error("Failed to read main.js: %s", str(e))
@@ -2376,21 +2402,31 @@ class RPGMLauncher(QMainWindow):
             logging.info("Cheat menu URL not present in main.js")
             return False
 
-        new_script_urls_content = re.sub(
-            r"\s*\"" + re.escape(new_url) + r"\",,?\n?", '',
-            script_urls_content
+        line_pattern = re.compile(
+            r'^[ \t]*"' + re.escape(new_url) + r'",\r?\n',
+            re.MULTILINE
         )
-        new_content = content[:match.start(1)] + new_script_urls_content + content[match.end(1):]
+
+        new_script_urls_content, count = line_pattern.subn('', script_urls_content)
+
+        if count == 0:
+            logging.error("Cheat menu URL not found as a separate line in scriptUrls.")
+            return False
+
+        new_content = (
+            content[:match.start(1)]
+            + new_script_urls_content
+            + content[match.end(1):]
+        )
 
         try:
-            with open(file_path, 'w') as file:
+            with open(file_path, 'w', encoding='utf-8') as file:
                 file.write(new_content)
             logging.info("Cheat menu URL removed successfully.")
+            return True
         except Exception as e:
             logging.error("Failed to write main.js: %s", str(e))
             return False
-
-        return True
 
     # Optimize space by removing unnecessary files and folders that are only used by windows
     # RPG MV and MZ games only
