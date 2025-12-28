@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
 
-current_version = "3.3.2"
+current_version = "3.3.3"
 config_version = ""
 latest_commit_sha = ""
 last_commit_sha = ""
@@ -215,6 +215,8 @@ class RPGMLauncher(QMainWindow):
 
     def show_instructions(self):
         instructions = (
+            "Video Tutorial: https://www.youtube.com/watch?v=NIRiKIjhXHk\n"
+            "_____________________________________________________________________________\n"
             "RPG Maker MV and MZ games:\n\n"
             "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
@@ -236,7 +238,7 @@ class RPGMLauncher(QMainWindow):
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Instructions")
-        dialog.resize(650, 530)
+        dialog.resize(650, 570)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
@@ -261,12 +263,13 @@ class RPGMLauncher(QMainWindow):
             "emerladCoder - Cheat Menu Plugin\n\n"
             "SynthFont developers - Soundfont\n\n"
             "Orochimarufan - Kawariki Patches\n\n"
-            "EasyRPG Team - EasyRPG Player"
+            "EasyRPG Team - EasyRPG Player\n\n"
+            "xem/pgm - Video Tutorial"
         )
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Credits")
-        dialog.resize(650, 380)
+        dialog.resize(650, 400)
         layout = QVBoxLayout(dialog)
 
         text_edit = QPlainTextEdit(dialog)
