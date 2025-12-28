@@ -1,12 +1,16 @@
 <img src="icon.png" height="200">
 
 # RPG-Maker-MacOS-Launcher
+> [!NOTE]
+> Development for this launcher has been completed! Only bugfixes will be released if needed.<br>
+
 A launcher to natively play RPG maker MV, MZ, XP, VX, VX Ace, 2000, and 2003 games on MacOS!<br>
-**Development for this launcher has been completed! Only bugfixes will be released if needed.**<br>
 Custom MKXP-Z fork: https://github.com/m5kro/mkxp-z/tree/RPGM-Launcher<br>
+
+> [!TIP]
+> Instructions video by [xem](https://forums.rpgmakerweb.com/index.php?members/xem.159435/)/[pgm](https://www.youtube.com/channel/UCWTsqPj8SD8rHL9gsBZI59Q): https://www.youtube.com/watch?v=NIRiKIjhXHk
 <br>
-Instructions video by [xem](https://forums.rpgmakerweb.com/index.php?members/xem.159435/)/[pgm](https://www.youtube.com/channel/UCWTsqPj8SD8rHL9gsBZI59Q): https://www.youtube.com/watch?v=NIRiKIjhXHk
-<br>
+
 # Donations
 Ethereum Wallet:<br>
 0x60F040444876EB5996DfA04CB8d8fc8D2aB96CF7
