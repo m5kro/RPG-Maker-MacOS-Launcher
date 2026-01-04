@@ -3,6 +3,7 @@
 # RPG-Maker-MacOS-Launcher
 > [!NOTE]
 > Development for this launcher has been completed! Only bugfixes will be released if needed.<br>
+> Check out [Xenolauncher](https://github.com/m5kro/Xenolauncher) for a more versatile launcher!
 
 A launcher to natively play RPG maker MV, MZ, XP, VX, VX Ace, 2000, and 2003 games on MacOS!<br>
 Custom MKXP-Z fork: https://github.com/m5kro/mkxp-z/tree/RPGM-Launcher<br>
