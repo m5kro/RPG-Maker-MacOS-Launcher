@@ -13,7 +13,7 @@ description = "Install Python development dependencies into .venv"
 run = "python -m pip install -r requirements-dev.txt"
 
 [tasks.build]
-description = "Build NW.js helpers (arm64, x64, Universal2) with the existing script"
+description = "Build and check the macOS arm64-only NW.js helper"
 run = "sh scripts/build-nwjs-helper.sh"
 
 [tasks.test]
@@ -27,6 +27,6 @@ run = [
 ]
 
 [tasks.run]
-description = "Launch the Python GUI with the built NW.js helper"
+description = "Launch the Apple Silicon arm64-only Python GUI with the built NW.js helper"
 depends = ["build"]
 run = "python main.py"

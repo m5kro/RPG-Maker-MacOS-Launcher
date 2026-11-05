@@ -4,14 +4,12 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import platform
-import re
 import stat
 import sys
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
-VERSION = re.compile(r"v\d+\.\d+\.\d+", re.ASCII)
+from runtime_arch import VERSION, require_nwjs_arm64
 LOCK_NAME = ".nwjs-install.lock"
 
 
@@ -19,8 +17,7 @@ def helper_path():
     base = Path(__file__).resolve().parent
     if getattr(sys, "frozen", False):
         return str(base / "nwjs-helper")
-    arch = "arm64" if platform.machine() == "arm64" else "x64"
-    return str(base / "build" / "helpers" / arch / "nwjs-helper")
+    return str(base / "build" / "helpers" / "arm64" / "nwjs-helper")
 
 
 def installed_versions(root):
@@ -29,10 +26,11 @@ def installed_versions(root):
         return []
     versions = []
     for directory in root.iterdir():
-        executable = directory / "nwjs.app/Contents/MacOS/nwjs"
-        if (VERSION.fullmatch(directory.name) and not directory.is_symlink()
-                and executable.is_file() and os.access(executable, os.X_OK)):
-            versions.append(directory.name)
+        try:
+            require_nwjs_arm64(directory)
+        except (OSError, ValueError):
+            continue
+        versions.append(directory.name)
     return sorted(versions, key=lambda v: tuple(map(int, v[1:].split('.'))), reverse=True)
 
 
@@ -158,8 +156,7 @@ class HelperProcess(QObject):
                 for item in versions:
                     if (not isinstance(item, dict) or not isinstance(item.get("version"), str)
                             or not VERSION.fullmatch(item["version"])
-                            or item["version"] in seen or not isinstance(item.get("arches"), list)
-                            or not item["arches"] or any(a not in ("arm64", "x64") for a in item["arches"])):
+                            or item["version"] in seen or item.get("arches") != ["arm64"]):
                         raise ValueError("invalid version or architecture")
                     seen.add(item["version"])
             elif kind == "complete":

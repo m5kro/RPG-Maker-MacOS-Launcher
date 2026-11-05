@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"debug/macho"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,38 +88,22 @@ func TestPublishDoesNotReplaceNewTarget(t *testing.T) {
 	noStaging(t, root)
 }
 
-func TestRosettaAndArchitecture(t *testing.T) {
-	es := goodEntries()
-	for i := range es {
-		es[i].name = strings.Replace(es[i].name, "osx-arm64", "osx-x64", 1)
-	}
-	es[0].data = executable(macho.CpuAmd64)
-	archive := makeZIP(t, es)
-	sum := sha256.Sum256(archive)
-	c := fixture(t, archive, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "SHASUMS256.txt") {
-			fmt.Fprintf(w, "%x  nwjs-sdk-%s-osx-x64.zip\n", sum, testVersion)
-			return
-		}
-		if !strings.HasSuffix(r.URL.Path, "osx-x64.zip") {
-			t.Errorf("wrong request %s", r.URL.Path)
-		}
-		w.Write(archive)
+func TestObsoleteArchitectureFlagsRejected(t *testing.T) {
+	c := fixture(t, nil, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("obsolete flags reached network")
+		w.WriteHeader(500)
 	})
-	root := t.TempDir()
-	a := args(root)
-	a[6] = "x64"
-	a = append(a, "--rosetta")
-	for i := 0; i < 2; i++ {
-		if code, _, diag := invoke(context.Background(), c, a); code != 0 {
-			t.Fatal(diag)
-		}
-	}
-	if _, err := regularFile(filepath.Join(root, testVersion, "run-with-rosetta")); err != nil {
-		t.Fatal(err)
-	}
-	if code, _, _ := invoke(context.Background(), c, a[:len(a)-1]); code == 0 {
-		t.Fatal("no-op with wrong Rosetta setting")
+	for _, flags := range [][]string{{"--arch", "arm64"}, {"--arch", "x64"}, {"--rosetta"}, {"--arch", "x64", "--rosetta"}} {
+		t.Run(strings.Join(flags, " "), func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "managed")
+			code, out, diag := invoke(context.Background(), c, append(args(root), flags...))
+			if code == 0 || out != "" || !strings.Contains(diag, "flag provided but not defined") {
+				t.Fatalf("obsolete flags accepted: %d %q %q", code, out, diag)
+			}
+			if _, err := os.Lstat(root); !os.IsNotExist(err) {
+				t.Fatalf("obsolete flags changed filesystem: %v", err)
+			}
+		})
 	}
 }
 
@@ -272,7 +255,7 @@ func TestProcessWorker(t *testing.T) {
 	if root == "" {
 		return
 	}
-	c := config{client: &http.Client{Timeout: time.Minute}, downloadBase: os.Getenv("NWJS_TEST_SERVER")}
+	c := config{client: &http.Client{Timeout: time.Minute}, downloadBase: os.Getenv("NWJS_TEST_SERVER"), hostOS: "darwin", hostArch: "arm64"}
 	os.Exit(process(c, args(root)))
 }
 
@@ -363,7 +346,7 @@ func TestInstalledValidationCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := validateInstalled(ctx, filepath.Join(root, testVersion), installOptions{root: root, version: testVersion, arch: "arm64"})
+	err := validateInstalled(ctx, filepath.Join(root, testVersion), installOptions{root: root, version: testVersion})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("existing bundle validation ignored cancellation: %v", err)
 	}

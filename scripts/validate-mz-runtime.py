@@ -11,8 +11,12 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import time
 import urllib.request
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime_arch import ensure_supported_host, require_nwjs_arm64
 
 import websocket
 
@@ -77,6 +81,8 @@ class Game:
         return state
 
     def start(self):
+        ensure_supported_host()
+        require_nwjs_arm64(self.root / "runtime/v0.94.1")
         for name in ("home", "profile", "cache", "tmp"):
             (self.root / name).mkdir(exist_ok=True)
         with socket.socket() as sock:
@@ -143,11 +149,13 @@ class Game:
 
 
 def main():
+    ensure_supported_host()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--reviewed-fixture", action="store_true", required=True)
     args = parser.parse_args()
     root = args.root.resolve()
+    require_nwjs_arm64(root / "runtime/v0.94.1")
     game = root / "game" / f"rpgmaker-mz-demo-{COMMIT}"
     assert (root / "runtime/v0.94.1/.nwjs-install.json").is_file(), "Install with the Go helper first"
     assert (game / "package.json").is_file()

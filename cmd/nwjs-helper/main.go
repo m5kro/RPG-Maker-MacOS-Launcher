@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"slices"
 	"sync"
 	"syscall"
@@ -29,11 +30,13 @@ const (
 
 var versionPattern = regexp.MustCompile(`^v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$`)
 
-// Only tests inject endpoints; the executable always uses official HTTPS URLs.
+// Only tests inject endpoints and host values; production uses official HTTPS and the Go runtime.
 type config struct {
 	client       *http.Client
 	versionsURL  string
 	downloadBase string
+	hostOS       string
+	hostArch     string
 }
 
 func officialConfig() config {
@@ -45,6 +48,8 @@ func officialConfig() config {
 		client:       &http.Client{Transport: transport, Timeout: 20 * time.Minute, CheckRedirect: officialRedirect},
 		versionsURL:  "https://nwjs.io/versions.json",
 		downloadBase: "https://dl.nwjs.io",
+		hostOS:       runtime.GOOS,
+		hostArch:     runtime.GOARCH,
 	}
 }
 
@@ -106,8 +111,11 @@ func command(ctx context.Context, args []string, diag io.Writer, c config, e *em
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if c.hostOS != "darwin" || c.hostArch != "arm64" {
+		return fmt.Errorf("requires macOS arm64; Intel/Rosetta is unsupported (got %s/%s)", c.hostOS, c.hostArch)
+	}
 	if len(args) == 0 {
-		return errors.New("usage: nwjs-helper versions | install --root <absolute-path> --version vX.Y.Z --arch arm64|x64 [--rosetta]")
+		return errors.New("usage: nwjs-helper versions | install --root <absolute-path> --version vX.Y.Z")
 	}
 	switch args[0] {
 	case "versions":
@@ -121,8 +129,6 @@ func command(ctx context.Context, args []string, diag io.Writer, c config, e *em
 		var o installOptions
 		f.StringVar(&o.root, "root", "", "absolute managed root")
 		f.StringVar(&o.version, "version", "", "NW.js version vX.Y.Z")
-		f.StringVar(&o.arch, "arch", "", "arm64 or x64")
-		f.BoolVar(&o.rosetta, "rosetta", false, "run x64 using Rosetta")
 		if err := f.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -173,14 +179,8 @@ func versions(ctx context.Context, c config, e *emitter) error {
 		if !versionPattern.MatchString(v.Version) || seen[v.Version] {
 			continue
 		}
-		arches := make([]string, 0, 2)
-		for _, a := range []string{"arm64", "x64"} {
-			if slices.Contains(v.Files, "osx-"+a) {
-				arches = append(arches, a)
-			}
-		}
-		if len(arches) > 0 {
-			result = append(result, version{v.Version, arches})
+		if slices.Contains(v.Files, "osx-arm64") {
+			result = append(result, version{v.Version, []string{"arm64"}})
 			seen[v.Version] = true
 		}
 	}

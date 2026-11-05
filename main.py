@@ -1,10 +1,20 @@
 import sys
+from runtime_arch import VERSION, ensure_supported_host, require_arm64, require_nwjs_arm64
+
+# Source startup must explain unsupported hosts even when Qt cannot be imported.
+if __name__ == "__main__":
+    try:
+        ensure_supported_host()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc))
+
 import os
 import json
 import subprocess
 import requests
 import zipfile
 import shutil
+import tempfile
 import platform
 import chardet
 import logging
@@ -114,6 +124,7 @@ default_advanced_easyrpg_settings = {
 LOG_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/log.txt")
 
 def check_appdir():
+    ensure_supported_host()
     app_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
     if not os.path.exists(app_dir):
         os.makedirs(app_dir)
@@ -125,6 +136,7 @@ class RPGMLauncher(QMainWindow):
     SETTINGS_FILE = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/settings.json")
 
     def __init__(self):
+        ensure_supported_host()
         super().__init__()
 
         self._nwjs_busy = False
@@ -634,6 +646,26 @@ class RPGMLauncher(QMainWindow):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
         return bool(installed_versions(applications_dir))
 
+    def _check_runtime(self, executable, warn=True):
+        try:
+            require_arm64(executable)
+            return True
+        except (OSError, ValueError) as exc:
+            if warn:
+                QMessageBox.critical(self, "Unsupported Runtime", str(exc))
+            return False
+
+    def _nwjs_executable(self):
+        version = self.version_selector.currentText()
+        directory = Path(os.path.expanduser("~/Library/Application Support/RPGM-Launcher")) / version
+        try:
+            if not VERSION.fullmatch(version):
+                raise ValueError("Select a valid arm64 NW.js version (vX.Y.Z).")
+            return str(require_nwjs_arm64(directory))
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Unsupported NW.js Runtime", str(exc))
+            return None
+
     def check_mkxpz_installed(self, warn=True):
         mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
         if not os.path.exists(mkxpz_path):
@@ -644,12 +676,12 @@ class RPGMLauncher(QMainWindow):
                                                     QMessageBox.Yes | QMessageBox.No)
             if install_response == QMessageBox.Yes:
                 self.install_mkxpz()
-                return True
+                return self.check_mkxpz_installed(warn=False)
             else:
                 logging.info("MKXPZ installation canceled by the user.")
                 QMessageBox.information(self, "Installation Canceled", "MKXPZ installation was canceled.")
                 return False
-        return True
+        return self._check_runtime(os.path.join(mkxpz_path, "Contents/MacOS/Z-universal"), warn)
 
     # RTP stands for "Run Time Package", which is a set of resources required by RPG Maker VX Ace, VX, and XP games
     def check_RTP_installed(self):
@@ -715,12 +747,12 @@ class RPGMLauncher(QMainWindow):
             )
             if install_response == QMessageBox.Yes:
                 self.install_easyrpg()
-                return True
+                return self.check_easyrpg_installed(warn=False)
             else:
                 logging.info("EasyRPG installation canceled by the user.")
                 QMessageBox.information(self, "Installation Canceled", "EasyRPG installation was canceled.")
                 return False
-        return True
+        return self._check_runtime(os.path.join(easyrpg_path, "Contents/MacOS/EasyRPG Player"), warn)
     
     def check_mkxpz_update(self):
         try:
@@ -1136,6 +1168,8 @@ class RPGMLauncher(QMainWindow):
         
         if self.check_package_json(folder_path):
             logging.info("Launching game using NWJS.")
+            if not self._nwjs_executable():
+                return
 
             if not self.prepare_package_json(folder_path):
                 return
@@ -1166,15 +1200,10 @@ class RPGMLauncher(QMainWindow):
             QMessageBox.critical(self, "Error", "No NWJS version selected.")
             return
         
-        nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
-        nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
-
-        # Older versions of NWJS don't have native arm so rosetta is required
-        run_with_rosetta_file = os.path.join(nwjs_dir, "run-with-rosetta")
-        if os.path.exists(run_with_rosetta_file):
-            subprocess.Popen(["arch", "-x86_64", nwjs_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
-        else:
-            subprocess.Popen([nwjs_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
+        nwjs_path = self._nwjs_executable()
+        if not nwjs_path:
+            return
+        subprocess.Popen([nwjs_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
         logging.info("Game launched using NWJS version %s.", selected_version)
         logging.info("NWJS log:")
 
@@ -1264,7 +1293,7 @@ class RPGMLauncher(QMainWindow):
 
         mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
         try:
-            subprocess.Popen([mkxpz_executable_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
+            subprocess.Popen(["/usr/bin/arch", "-arm64", mkxpz_executable_path, folder_path], stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
             logging.info("MKXPZ game launched from folder: %s", folder_path)
             logging.info("MKXPZ log:")
         except Exception as e:
@@ -1281,7 +1310,6 @@ class RPGMLauncher(QMainWindow):
                                                        "A new update is available for EasyRPG Player. Would you like to update now?",
                                                        QMessageBox.Yes | QMessageBox.No)
                 if update_response == QMessageBox.Yes:
-                    self.uninstall_easyrpg(popup=False)
                     self.install_easyrpg()
 
         easyrpg_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app/Contents/MacOS/EasyRPG Player")
@@ -1308,18 +1336,10 @@ class RPGMLauncher(QMainWindow):
                         extra_options.append(advanced_settings[key])
         
         try:
-            # EasyRPG only has an intel version, so Rosetta is required on Apple Silicon Macs
-            arch = "arm64" if platform.machine() == "arm64" else "x64"
-            if arch == "arm64":
-                subprocess.Popen(["arch", "-x86_64", easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options, stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
-                logging.info("EasyRPG game launched from folder: %s using Rosetta", folder_path)
-                logging.info("Appended options: %s", extra_options)
-                logging.info("EasyRPG log:")
-            else:
-                subprocess.Popen([easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options, stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
-                logging.info("EasyRPG game launched from folder: %s", folder_path)
-                logging.info("Appended options: %s", extra_options)
-                logging.info("EasyRPG log:")
+            subprocess.Popen(["/usr/bin/arch", "-arm64", easyrpg_executable_path, "--window", "--project-path", folder_path] + extra_options, stdout=open(LOG_FILE, 'a'), stderr=subprocess.STDOUT)
+            logging.info("EasyRPG game launched from folder: %s (arm64)", folder_path)
+            logging.info("Appended options: %s", extra_options)
+            logging.info("EasyRPG log:")
         except Exception as e:
             logging.error("Failed to launch EasyRPG: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
@@ -1346,7 +1366,9 @@ class RPGMLauncher(QMainWindow):
 
         try:
             if self.check_package_json(folder_path):
-                # NWJS export process
+                # Validate before copying or repairing any game files.
+                if not self._nwjs_executable():
+                    return
                 selected_version = self.version_selector.currentText()
                 if not selected_version:
                     logging.error("No NWJS version selected.")
@@ -1572,6 +1594,8 @@ class RPGMLauncher(QMainWindow):
             
             elif self.check_RTP_RT(folder_path):
                 # EasyRPG export process
+                if not self.check_easyrpg_installed():
+                    return
                 easyrpg_app_src = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app")
                 easyrpg_app_dst = os.path.join(destination_folder, app_name + ".app")
 
@@ -1724,9 +1748,8 @@ class RPGMLauncher(QMainWindow):
             return
         if self._nwjs_phase == 'versions':
             self._nwjs_dialog.hide()
-            arch = 'arm64' if platform.machine() == 'arm64' else 'x64'
             versions = {v['version']: v['arches'] for v in result['versions']
-                        if arch in v['arches'] or (arch == 'arm64' and 'x64' in v['arches'])}
+                        if v['arches'] == ['arm64']}
             if not versions:
                 self._finish_nwjs("No compatible NW.js releases were returned.")
                 return
@@ -1736,20 +1759,9 @@ class RPGMLauncher(QMainWindow):
             if not ok or version not in versions:
                 self._finish_nwjs()
                 return
-            rosetta = arch == 'arm64' and 'arm64' not in versions[version]
-            if rosetta:
-                accepted = self.show_rosetta_warning()
-                if not self._nwjs_busy:
-                    return
-                if not accepted:
-                    self._finish_nwjs()
-                    return
-                arch = 'x64'
             self._nwjs_version = version
             self._nwjs_root = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-            arguments = ['install', '--root', self._nwjs_root, '--version', version, '--arch', arch]
-            if rosetta:
-                arguments.append('--rosetta')
+            arguments = ['install', '--root', self._nwjs_root, '--version', version]
             self._nwjs_phase = 'install'
             self._nwjs_dialog.setLabelText("Installing NW.js...")
             self._nwjs_dialog.show()
@@ -1784,14 +1796,39 @@ class RPGMLauncher(QMainWindow):
         if self._nwjs_closing:
             QTimer.singleShot(0, self.close)
 
+    def _publish_runtime(self, staged_app, target, executable_name):
+        staged_app, target = Path(staged_app), Path(target)
+        binary = staged_app / "Contents/MacOS" / executable_name
+        if binary.is_symlink() or not binary.is_file():
+            raise ValueError(f"Missing or unsafe runtime executable: {binary}")
+        binary.chmod(binary.stat().st_mode | 0o100)
+        require_arm64(binary)
+        backup = target.with_name(f".{target.name}.previous")
+        if (os.path.lexists(backup) or target.is_symlink()
+                or (target.exists() and not target.is_dir())):
+            raise ValueError(f"Refusing to replace an unsafe runtime or existing recovery copy: {backup}")
+        had_previous = target.exists()
+        if had_previous:
+            os.rename(target, backup)
+        try:
+            os.rename(staged_app, target)
+        except OSError:
+            if had_previous:
+                # Recovery stays outside staging, even if restoring it fails.
+                os.rename(backup, target)
+            raise
+        if had_previous:
+            shutil.rmtree(backup)
+
     # Install MKXP-Z, updates will be checked automatically
     def install_mkxpz(self):
         # The URL for the MKXP-Z universal build is under my fork because it needs to be built manually
         URL = "https://github.com/m5kro/mkxp-z/releases/download/launcher/Z-universal.zip"
-        zip_file_path = "/tmp/Z-universal.zip"
         target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
-
+        stage = None
         try:
+            stage = tempfile.TemporaryDirectory(prefix=".runtime-stage-", dir=target_dir)
+            zip_file_path = os.path.join(stage.name, "download.zip")
             response = requests.get(URL, stream=True)
             if response.status_code != 200:
                 logging.error("Failed to download MKXPZ.")
@@ -1838,19 +1875,9 @@ class RPGMLauncher(QMainWindow):
                 return
 
             with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-                zip_ref.extractall(target_dir)
-            logging.info("MKXPZ extracted successfully to %s", target_dir)
-
-            os.remove(zip_file_path)
-
-            mkxpz_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app/Contents/MacOS/Z-universal")
-            try:
-                subprocess.run(["chmod", "+x", mkxpz_executable_path], check=True)
-                logging.info("Set executable permissions for %s", mkxpz_executable_path)
-            except subprocess.CalledProcessError as e:
-                logging.error("Failed to set executable permissions: %s", str(e))
-                QMessageBox.critical(self, "Error", f"Failed to set executable permissions: {str(e)}")
-                return
+                zip_ref.extractall(stage.name)
+            self._publish_runtime(Path(stage.name) / "Z-universal.app",
+                                  Path(target_dir) / "Z-universal.app", "Z-universal")
 
             progress_dialog.close()
             global last_commit_sha
@@ -1862,6 +1889,9 @@ class RPGMLauncher(QMainWindow):
         except Exception as e:
             logging.error("Error installing MKXPZ: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install MKXPZ: {str(e)}")
+        finally:
+            if stage is not None:
+                stage.cleanup()
     
     # Install RTP (Run Time Package) for RPG Maker games
     def install_RTP(self):
@@ -2055,9 +2085,11 @@ class RPGMLauncher(QMainWindow):
     # Install EasyRPG Player for RPG Maker 2000/2003 games
     def install_easyrpg(self):
         URL="https://ci.easyrpg.org/downloads/macos/EasyRPG-Player-macos.app.zip"
-        zip_file_path = "/tmp/EasyRPG-Player-macos.app.zip"
         target_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/")
+        stage = None
         try:
+            stage = tempfile.TemporaryDirectory(prefix=".runtime-stage-", dir=target_dir)
+            zip_file_path = os.path.join(stage.name, "download.zip")
             response = requests.get(URL, stream=True)
             if response.status_code != 200:
                 logging.error("Failed to download EasyRPG Player.")
@@ -2104,18 +2136,9 @@ class RPGMLauncher(QMainWindow):
                 return
 
             with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
-                zip_ref.extractall(os.path.dirname(target_dir))
-            logging.info("EasyRPG Player extracted successfully to %s", target_dir)
-
-            os.remove(zip_file_path)
-            easyrpg_executable_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/EasyRPG Player.app/Contents/MacOS/EasyRPG Player")
-            try:
-                subprocess.run(["chmod", "+x", easyrpg_executable_path], check=True)
-                logging.info("Set executable permissions for %s", easyrpg_executable_path)
-            except subprocess.CalledProcessError as e:
-                logging.error("Failed to set executable permissions: %s", str(e))
-                QMessageBox.critical(self, "Error", f"Failed to set executable permissions: {str(e)}")
-                return
+                zip_ref.extractall(stage.name)
+            self._publish_runtime(Path(stage.name) / "EasyRPG Player.app",
+                                  Path(target_dir) / "EasyRPG Player.app", "EasyRPG Player")
 
             progress_dialog.close()
             global last_build_number
@@ -2126,6 +2149,9 @@ class RPGMLauncher(QMainWindow):
         except Exception as e:
             logging.error("Error installing EasyRPG Player: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to install EasyRPG Player: {str(e)}")
+        finally:
+            if stage is not None:
+                stage.cleanup()
 
     def show_version_selection_dialog(self, versions):
         dialog = QDialog(self)
@@ -2144,22 +2170,6 @@ class RPGMLauncher(QMainWindow):
         result = dialog.exec()
         return combo_box.currentText(), result == QDialog.Accepted
 
-    def show_rosetta_warning(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Rosetta Warning")
-        layout = QVBoxLayout(dialog)
-
-        label = QLabel("An Apple Silicon / ARM64 build of this version of NWJS is unavailable. Would you like to use the Intel / x64 version with Rosetta?", dialog)
-        layout.addWidget(label)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Yes | QDialogButtonBox.No, dialog)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        result = dialog.exec()
-        return result == QDialog.Accepted
-    
     def uninstall_menu(self):
         if self._nwjs_busy:
             return
@@ -2308,6 +2318,7 @@ class RPGMLauncher(QMainWindow):
         dialog.exec()
 
 def main():
+    ensure_supported_host()
     check_appdir()
 
     # Set up logging after ensuring the directory exists

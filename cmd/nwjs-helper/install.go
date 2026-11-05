@@ -17,8 +17,7 @@ import (
 )
 
 type installOptions struct {
-	root, version, arch string
-	rosetta             bool
+	root, version string
 }
 
 type receipt struct {
@@ -30,12 +29,6 @@ type receipt struct {
 func install(ctx context.Context, c config, e *emitter, o installOptions) (app string, err error) {
 	if !versionPattern.MatchString(o.version) {
 		return "", errors.New("version must be vX.Y.Z (stable numeric release)")
-	}
-	if o.arch != "arm64" && o.arch != "x64" {
-		return "", errors.New("arch must be arm64 or x64")
-	}
-	if o.rosetta && o.arch != "x64" {
-		return "", errors.New("--rosetta requires --arch x64")
 	}
 	if !filepath.IsAbs(o.root) || filepath.Clean(o.root) == string(os.PathSeparator) || strings.ContainsRune(o.root, 0) {
 		return "", errors.New("root must be an absolute managed directory, not filesystem root")
@@ -68,7 +61,7 @@ func install(ctx context.Context, c config, e *emitter, o installOptions) (app s
 			err = errors.Join(err, fmt.Errorf("cleaning owned staging %s: %w", stage, cleanup))
 		}
 	}()
-	prefix := "nwjs-sdk-" + o.version + "-osx-" + o.arch
+	prefix := "nwjs-sdk-" + o.version + "-osx-arm64"
 	archive := prefix + ".zip"
 	manifestURL := c.downloadBase + "/" + o.version + "/SHASUMS256.txt"
 	manifest, err := c.metadata(ctx, manifestURL, maxManifest)
@@ -90,6 +83,9 @@ func install(ctx context.Context, c config, e *emitter, o installOptions) (app s
 	if err := extract(ctx, zipPath, unpacked, prefix, e); err != nil {
 		return "", fmt.Errorf("extract: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	payload := filepath.Join(stage, "payload")
 	if err := os.Mkdir(payload, 0700); err != nil {
 		return "", err
@@ -98,15 +94,10 @@ func install(ctx context.Context, c config, e *emitter, o installOptions) (app s
 	if err := os.Rename(filepath.Join(unpacked, prefix, "nwjs.app"), stagedApp); err != nil {
 		return "", err
 	}
-	if err := validateBundle(ctx, stagedApp, o.arch); err != nil {
+	if err := validateBundle(ctx, stagedApp); err != nil {
 		return "", err
 	}
-	if o.rosetta {
-		if err := os.WriteFile(filepath.Join(payload, "run-with-rosetta"), []byte("Run this x64 NW.js installation using Rosetta 2.\n"), 0600); err != nil {
-			return "", err
-		}
-	}
-	b, err := json.Marshal(receipt{o.version, o.arch, o.rosetta})
+	b, err := json.Marshal(receipt{o.version, "arm64", false})
 	if err != nil {
 		return "", err
 	}
@@ -219,7 +210,7 @@ func realDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() {
+	if info.Mode().Type() != os.ModeDir {
 		return fmt.Errorf("not a real directory: %s", path)
 	}
 	return nil
@@ -245,24 +236,44 @@ func validateInstalled(ctx context.Context, target string, o installOptions) err
 	if err := json.Unmarshal(b, &got); err != nil {
 		return err
 	}
-	if got != (receipt{o.version, o.arch, o.rosetta}) {
-		return errors.New("version, architecture or Rosetta differs from install receipt")
+	if got != (receipt{o.version, "arm64", false}) {
+		return errors.New("install receipt must match this version and arm64 architecture with no Rosetta")
 	}
-	marker, err := os.Lstat(filepath.Join(target, "run-with-rosetta"))
-	if o.rosetta {
-		if err != nil {
-			return err
-		}
-		if !marker.Mode().IsRegular() {
-			return errors.New("unsafe Rosetta marker")
-		}
-	} else if !os.IsNotExist(err) {
-		return errors.New("unexpected or unreadable Rosetta marker")
+	if _, err := os.Lstat(filepath.Join(target, "run-with-rosetta")); !os.IsNotExist(err) {
+		return errors.New("Rosetta marker present or unreadable; this helper cannot reuse it")
 	}
-	return validateBundle(ctx, filepath.Join(target, "nwjs.app"), o.arch)
+	return validateBundle(ctx, filepath.Join(target, "nwjs.app"))
 }
 
-func validateBundle(ctx context.Context, app, arch string) error {
+func validateMachO(exe string) error {
+	var arm64 bool
+	fat, err := macho.OpenFat(exe)
+	switch {
+	case err == nil:
+		defer fat.Close()
+		for _, slice := range fat.Arches {
+			if slice.Cpu == macho.CpuArm64 && slice.Type == macho.TypeExec {
+				arm64 = true
+				break
+			}
+		}
+	case errors.Is(err, macho.ErrNotFat):
+		f, err := macho.Open(exe)
+		if err != nil {
+			return fmt.Errorf("NW.js executable is not a supported Mach-O: %w", err)
+		}
+		defer f.Close()
+		arm64 = f.Cpu == macho.CpuArm64 && f.Type == macho.TypeExec
+	default:
+		return fmt.Errorf("NW.js executable is not a supported Mach-O: %w", err)
+	}
+	if !arm64 {
+		return errors.New("NW.js Mach-O must contain an arm64 executable")
+	}
+	return nil
+}
+
+func validateBundle(ctx context.Context, app string) error {
 	for _, dir := range []string{app, filepath.Join(app, "Contents"), filepath.Join(app, "Contents/MacOS")} {
 		if err := realDirectory(dir); err != nil {
 			return err
@@ -276,17 +287,8 @@ func validateBundle(ctx context.Context, app, arch string) error {
 	if info.Mode().Perm()&0100 == 0 {
 		return errors.New("Contents/MacOS/nwjs is not executable")
 	}
-	f, err := macho.Open(exe)
-	if err != nil {
-		return fmt.Errorf("NW.js executable is not a supported thin Mach-O: %w", err)
-	}
-	defer f.Close()
-	cpu := macho.CpuArm64
-	if arch == "x64" {
-		cpu = macho.CpuAmd64
-	}
-	if f.Type != macho.TypeExec || f.Cpu != cpu {
-		return errors.New("NW.js Mach-O architecture/type does not match requested install")
+	if err := validateMachO(exe); err != nil {
+		return err
 	}
 	var count int
 	var size int64
@@ -308,7 +310,7 @@ func validateBundle(ctx context.Context, app, arch string) error {
 		switch {
 		case info.Mode()&os.ModeSymlink != 0:
 			return validateLink(app, path)
-		case info.IsDir():
+		case info.Mode().Type() == os.ModeDir:
 			return nil
 		case info.Mode().IsRegular():
 			size += info.Size()

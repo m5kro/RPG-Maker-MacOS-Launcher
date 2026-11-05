@@ -13,6 +13,8 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from macho_fixture import executable, thin, X64
+from runtime_arch import VERSION, ensure_supported_host, require_arm64, require_nwjs_arm64
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "main.py"
@@ -20,7 +22,7 @@ METHODS = {
     "__init__", "load_settings", "select_folder", "check_package_json",
     "prepare_package_json", "add_protection_script", "start_game",
     "launch_nwjs_game", "export_standalone_app", "optimize_space",
-    "patch_rpgm_getpixel",
+    "patch_rpgm_getpixel", "_check_runtime", "_nwjs_executable",
 }
 
 
@@ -68,6 +70,8 @@ class SafetyTests(unittest.TestCase):
             "QFileDialog": Mock(), "QApplication": Mock(), "Qt": Mock(),
             "LOG_FILE": str(self.root / "log.txt"),
             "current_version": "new", "config_version": "old",
+            "VERSION": VERSION, "ensure_supported_host": ensure_supported_host, "require_arm64": require_arm64,
+            "require_nwjs_arm64": require_nwjs_arm64,
         }
         for name in ("QWidget", "QVBoxLayout", "QHBoxLayout", "QPushButton",
                      "QLabel", "QComboBox", "QCheckBox", "QProgressDialog"):
@@ -85,7 +89,8 @@ class SafetyTests(unittest.TestCase):
         for name in ("extract", "cheat_menu", "optimize_space", "disable_protection", "getpixel_patch"):
             setattr(self.app, name + "_checkbox", widget())
         self.app.version_selector = Mock()
-        self.app.version_selector.currentText.return_value = "v1"
+        self.app.version_selector.currentText.return_value = "v1.0.0"
+        self.runtime = executable(self.root / "Library/Application Support/RPGM-Launcher/v1.0.0/nwjs.app/Contents/MacOS/nwjs")
         self.app.patch_rpgm_getpixel = Mock(return_value={"ok": True})
 
     def package(self, data):
@@ -180,6 +185,33 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual((shared / "save").read_text(), "valuable")
         self.env["subprocess"].Popen.assert_called_once()
 
+    def test_unsupported_nwjs_is_rejected_before_game_repair_launch_and_export(self):
+        package = self.package({"name": ""})
+        before = package.read_bytes()
+        destination = self.root / "export"
+        destination.mkdir()
+        self.app.get_app_name.return_value = ("Example", True)
+        self.env["QFileDialog"].getExistingDirectory.return_value = str(destination)
+        marker = self.runtime.parents[3] / "run-with-rosetta"
+        for mode in ("intel", "marker", "missing"):
+            with self.subTest(mode=mode):
+                executable(self.runtime, thin(X64) if mode == "intel" else thin())
+                if mode == "marker":
+                    marker.touch()
+                if mode == "missing":
+                    self.runtime.unlink()
+                self.app.start_game()
+                self.app.launch_nwjs_game(str(self.game))
+                self.app.export_standalone_app()
+                self.env["subprocess"].Popen.assert_not_called()
+                self.app.patch_rpgm_getpixel.assert_not_called()
+                self.assertEqual(package.read_bytes(), before)
+                self.assertEqual(list(self.game.iterdir()), [package])
+                self.assertEqual(list(destination.iterdir()), [])
+                if mode == "marker":
+                    self.assertTrue(marker.exists())
+                    marker.unlink()
+
     def test_optimize_space_is_inert_even_if_called_directly(self):
         for name in ("game.exe", "nw.dll", "locales/user-data"):
             path = self.game / name
@@ -203,7 +235,7 @@ class SafetyTests(unittest.TestCase):
     def test_export_repairs_copy_not_original_and_never_optimizes(self):
         package = self.package({"name": ""})
         before = package.read_bytes()
-        runtime = self.root / "Library/Application Support/RPGM-Launcher/v1/nwjs.app/Contents/Resources"
+        runtime = self.root / "Library/Application Support/RPGM-Launcher/v1.0.0/nwjs.app/Contents/Resources"
         runtime.mkdir(parents=True)
         destination = self.root / "export"
         destination.mkdir()
@@ -282,12 +314,10 @@ class SafetyTests(unittest.TestCase):
                             self.assertFalse(list(self.game.rglob("Cheat_Menu.*")))
 
     def test_export_copies_existing_assets_without_cheats_or_extraction(self):
-        runtime = self.root / "Library/Application Support/RPGM-Launcher/v1/nwjs.app"
+        runtime = self.root / "Library/Application Support/RPGM-Launcher/v1.0.0/nwjs.app"
         (runtime / "Contents/Resources").mkdir(parents=True)
         binary = runtime / "Contents/MacOS/nwjs"
-        binary.parent.mkdir()
-        binary.write_bytes(b"fake NW.js runtime")
-        binary.chmod(0o700)
+        executable(binary)
         destination = self.root / "export"
         destination.mkdir()
         self.env["QFileDialog"].getExistingDirectory.return_value = str(destination)

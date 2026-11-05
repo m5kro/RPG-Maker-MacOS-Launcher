@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-// Darwin-only flock needs no cgo and cross-compiles for darwin/arm64 and darwin/amd64.
+// The macOS backend uses flock without cgo; host selection permits only darwin/arm64.
 func managedRoot(name string) (string, error) {
 	name = filepath.Clean(name)
 	if err := os.MkdirAll(name, 0700); err != nil {

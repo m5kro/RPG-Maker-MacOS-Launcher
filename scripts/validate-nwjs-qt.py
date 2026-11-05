@@ -13,7 +13,13 @@ import sys
 import time
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime_arch import ensure_supported_host, require_arm64, require_nwjs_arm64
+
+ensure_supported_host()
 root = Path(sys.argv[1]).resolve()
+require_nwjs_arm64(root / "runtime/v0.94.1")
+require_arm64(root / "nwjs-helper")
 assert (root / "runtime/v0.94.1/.nwjs-install.json").is_file()
 home = root / "qt-home"
 home.mkdir(mode=0o700)  # Refuse to reuse an existing profile/settings directory.
@@ -21,7 +27,6 @@ managed = home / "Library/Application Support/RPGM-Launcher"
 managed.mkdir(parents=True, mode=0o700)
 shutil.copytree(root / "runtime/v0.94.1", managed / "v0.94.1", symlinks=True)
 os.environ.update(HOME=str(home), QT_QPA_PLATFORM="offscreen", XDG_CACHE_HOME=str(root / "cache"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -62,7 +67,8 @@ try:
             QTest.qWait(20)
         assert not window._nwjs_busy, "Timed out waiting for real helper"
         assert len(events) == 2 and all(not e["error"] and not e["cancelled"] for e in events), events
-        assert calls == [["versions"], ["install", "--root", str(managed), "--version", "v0.94.1", "--arch", "arm64"]], calls
+        assert all(v["arches"] == ["arm64"] for v in events[0]["result"]["versions"])
+        assert calls == [["versions"], ["install", "--root", str(managed), "--version", "v0.94.1"]], calls
         assert events[1]["result"]["path"] == str(managed / "v0.94.1/nwjs.app")
         assert not progress, "Matching existing install should not download/extract"
         assert window.version_selector.currentText() == "v0.94.1"

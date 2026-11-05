@@ -1,8 +1,17 @@
 # Incremental Go migration: real MZ validation
 
+> ARM専用化の現状注記：ランチャー／Go helperはmacOS Apple Silicon arm64のみ対応します。NW.js一覧もarm64配布のある版のみで、旧`--arch`・`--rosetta`は拒否します。本文の320版・旧CLI・Rosetta同意・3アーキテクチャなどは過去の事実として残し、現在の再実行手順は末尾「Reproduce safely」に分けています。ARM専用化でこの実ゲーム試験を再実行したわけではありません。
+
 > 現状注記：この記録は機能撤去前の検証です。現在はチート用JS/CSSの注入・除去、`game_en.exe`からの英語版展開、外部セーブ編集サイトへの導線を撤去しています。以下のテスト件数・条件・結果は当時の履歴であり、撤去後の実ゲーム再試験を示すものではありません。通常のゲーム内セーブ・ロード試験の記録はそのまま残しています。
 
-## Result and boundary
+## ARM-only regression checks (current; separate from the historical game run)
+
+- TDD evidence: `build/validation/arm-only/python-red-complete.log`, `safety-red.log`, `external-red.log`, `distribution-red.log`; final `python-green.log`: **58 Python/Qt tests passed, no skips**. The first whole-suite RED attempt timed out on the obsolete Rosetta dialog; the completed RED run mocks the dialog closed. `python-green-attempt.log` separately records the old built helper's CLI mismatch during migration, not a retained Python failure.
+- Main executable checks cover arm64 thin and external Universal/FAT32/FAT64 (both byte orders), malformed/truncated/range-invalid input, Intel-only/missing/non-executable/symlink/FIFO rejection, and old NW.js receipt/marker preservation. This is not a complete Mach-O loader, dylib audit or signature validation.
+- ARM helper build and arm64 PyInstaller build passed. New packaging outputs are under `build/validation/arm-only/dist/`, not a cleanup of previous `dist/` or x64/Universal2 build artifacts. `packaged-smoke.json` records native main/helper checks, a read-only check of the previously installed v0.94.1, and a 3-second offscreen startup in a fresh isolated HOME. `packaged-codesign.log` records local ad-hoc strict verification success; no Developer ID/notarization/Finder/Gatekeeper claim.
+- No new external game/runtime download or real gameplay retest was performed for these Python/distribution checks. External installer tests use header-only Mach-O ZIP fixtures; they do not execute them. The official EasyRPG CI URL and MKXP-Z universal URL remain unchanged, but their downloaded main executables must now contain arm64 before replacement. Failed download/validation preserves the old app; failed rollback preserves `.AppName.previous` outside staging for manual recovery.
+
+## Result and boundary (historical Go migration)
 
 **Passed for one real MZ fixture on Apple Silicon:** official runtime installation by the new Go helper, a real NW.js renderer, keyboard-driven title → New Game → movement/event → Save → process close/relaunch → Continue/Load, and restored state. Separately, the production Python window/QProcess integration passed against the real helper and an isolated copy of that installation.
 
@@ -101,6 +110,8 @@ Observed: install button disabled management while busy; official lookup returne
 
 ## Reproduce safely
 
+**Current ARM-only CLI (not the historical invocation above):** use native darwin/arm64 Python and the rebuilt arm64 helper. Both validation scripts reject unsupported hosts and check the runtime's main Mach-O executable before creating profiles/evidence or launching. The Qt script additionally checks the helper and the arm64-only versions protocol. Main-executable validation is not a dylib/signature/whole-game compatibility guarantee. Intel/Rosetta is unsupported, not an untested fallback.
+
 Use a fresh ignored/temp directory, a logged-in macOS arm64 GUI session, available disk, and your own reviewed/legal fixture copy. Download budget here is well below 2 GiB. Do not point these scripts at a personal game/save/profile directory. A local HOME, cache, TMPDIR and `--user-data-dir` are **hygiene, not an OS sandbox**; NW.js still has the user's privileges. No credentials are passed in the game subprocess environment. Do not run arbitrary unreviewed games.
 
 ```sh
@@ -109,7 +120,7 @@ R=$(mktemp -d "$PWD/build/validation/mz-real.XXXXXX")
 mkdir -p "$R/evidence" "$R/game"
 go build -o "$R/nwjs-helper" ./cmd/nwjs-helper
 # Stop on any failure; do not substitute a manually unzipped runtime.
-"$R/nwjs-helper" install --root "$R/runtime" --version v0.94.1 --arch arm64 \
+"$R/nwjs-helper" install --root "$R/runtime" --version v0.94.1 \
   >"$R/evidence/install.stdout" 2>"$R/evidence/install.stderr"
 curl --fail --location https://dl.nwjs.io/v0.94.1/SHASUMS256.txt \
   -o "$R/evidence/SHASUMS256.txt"

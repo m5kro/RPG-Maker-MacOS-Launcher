@@ -79,7 +79,7 @@ func fixture(t *testing.T, archive []byte, override http.HandlerFunc) config {
 		}
 		switch r.URL.Path {
 		case "/versions.json":
-			io.WriteString(w, `{"versions":[{"version":"v0.100.0","files":["osx-x64","linux-x64","osx-arm64"]},{"version":"v0.14.7","files":["osx-x64"]},{"version":"v0.1.0","files":["linux-x64"]}]}`)
+			io.WriteString(w, `{"versions":[{"version":"v0.100.0","files":["osx-x64","linux-x64","osx-arm64"]},{"version":"v0.14.7","files":["osx-x64"]},{"version":"v0.1.0","files":["linux-x64"]},{"version":"v0.98.0","files":["win-x64"]},{"version":"v0.101.0-beta1","files":["osx-arm64"]},{"version":"v0.99.0","files":["osx-arm64"]},{"version":"v0.100.0","files":["osx-arm64"]}]}`)
 		case "/" + testVersion + "/SHASUMS256.txt":
 			fmt.Fprintf(w, "%x  %s\n", sum, testArchive)
 		case "/" + testVersion + "/" + testArchive:
@@ -89,11 +89,11 @@ func fixture(t *testing.T, archive []byte, override http.HandlerFunc) config {
 		}
 	}))
 	t.Cleanup(s.Close)
-	return config{client: s.Client(), versionsURL: s.URL + "/versions.json", downloadBase: s.URL}
+	return config{client: s.Client(), versionsURL: s.URL + "/versions.json", downloadBase: s.URL, hostOS: "darwin", hostArch: "arm64"}
 }
 
 func args(root string) []string {
-	return []string{"install", "--root", root, "--version", testVersion, "--arch", "arm64"}
+	return []string{"install", "--root", root, "--version", testVersion}
 }
 
 func invoke(ctx context.Context, c config, arguments []string) (int, string, string) {
@@ -164,7 +164,7 @@ func failedInstall(t *testing.T, c config) {
 func TestVersions(t *testing.T) {
 	c := fixture(t, nil, nil)
 	code, out, diag := invoke(context.Background(), c, []string{"versions"})
-	want := "{\"event\":\"versions\",\"versions\":[{\"version\":\"v0.100.0\",\"arches\":[\"arm64\",\"x64\"]},{\"version\":\"v0.14.7\",\"arches\":[\"x64\"]}]}\n"
+	want := "{\"event\":\"versions\",\"versions\":[{\"version\":\"v0.100.0\",\"arches\":[\"arm64\"]},{\"version\":\"v0.99.0\",\"arches\":[\"arm64\"]}]}\n"
 	if code != 0 || out != want || diag != "" {
 		t.Fatalf("got %d %q %q", code, out, diag)
 	}
@@ -331,6 +331,15 @@ func TestExistingTargetsPreserved(t *testing.T) {
 					if err := os.Remove(filepath.Join(target, ".nwjs-install.json")); err != nil {
 						t.Fatal(err)
 					}
+				case "arch-mismatch", "rosetta-mismatch":
+					r := receipt{Version: testVersion, Arch: "x64", Rosetta: kind == "rosetta-mismatch"}
+					b, err := json.Marshal(r)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(target, ".nwjs-install.json"), b, 0600); err != nil {
+						t.Fatal(err)
+					}
 				case "tampered-executable":
 					if err := os.Chmod(filepath.Join(target, "nwjs.app/Contents/MacOS/nwjs"), 0600); err != nil {
 						t.Fatal(err)
@@ -341,15 +350,7 @@ func TestExistingTargetsPreserved(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a := args(root)
-			if kind == "arch-mismatch" {
-				a[len(a)-1] = "x64"
-			}
-			if kind == "rosetta-mismatch" {
-				a[len(a)-1] = "x64"
-				a = append(a, "--rosetta")
-			}
-			code, out, diag := invoke(context.Background(), c, a)
+			code, out, diag := invoke(context.Background(), c, args(root))
 			if code == 0 || diag == "" {
 				t.Fatalf("overwrote %s: %s", kind, out)
 			}
@@ -427,10 +428,8 @@ func TestInvalidCLI(t *testing.T) {
 		a[4] = v
 		cases = append(cases, a)
 	}
-	for _, arch := range []string{"amd64", "ARM64", "../x64", ""} {
-		a := args(root)
-		a[6] = arch
-		cases = append(cases, a)
+	for _, arch := range []string{"arm64", "x64", "amd64", "ARM64", "../x64", ""} {
+		cases = append(cases, append(args(root), "--arch", arch))
 	}
 	for _, r := range []string{"", "relative", "/"} {
 		a := args(root)

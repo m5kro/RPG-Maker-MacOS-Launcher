@@ -2,7 +2,7 @@
 
 # RPG-Maker-MacOS-Launcher
 
-RPG Maker製のゲームをmacOSで動かすために、実行環境の導入とゲームの起動をまとめて扱うランチャーです。ゲーム制作ツールそのものではなく、手元にあるゲームを、その形式に合ったmacOS向けランタイムで起動します。MV・MZにはNW.js、XP・VX・VX AceにはMKXP-Z、2000・2003にはEasyRPGを使う構成を元プロジェクトから引き継いでいます。すべてのゲームやプラグインで動作することを保証するものではありません。
+RPG Maker製のゲームを**macOSのApple Silicon（arm64）専用**で動かすために、実行環境の導入とゲームの起動をまとめて扱うランチャーです。ゲーム制作ツールそのものではなく、手元にあるゲームを、その形式に合ったmacOS向けランタイムで起動します。MV・MZにはNW.js、XP・VX・VX AceにはMKXP-Z、2000・2003にはEasyRPGを使う構成を元プロジェクトから引き継いでいます。すべてのゲームやプラグインで動作することを保証するものではありません。
 
 このforkは、[m5kro/RPG-Maker-MacOS-Launcher](https://github.com/m5kro/RPG-Maker-MacOS-Launcher)をもとに、安全性の見直しと段階的なGo移行を進めている派生版です。上流の「開発完了、必要に応じてバグ修正のみ」という案内は元プロジェクトについてのもので、このforkの作業完了を意味しません。上流では、より汎用的な後継として[Xenolauncher](https://github.com/m5kro/Xenolauncher)も案内されています。
 
@@ -17,11 +17,15 @@ RPG Maker製のゲームをmacOSで動かすために、実行環境の導入と
 
 `Install NWJS Version`を押すと、Qtの`QProcess`がGo helperの`versions`を非同期で起動し、選択後に`install`を実行します。ダウンロード・検証・展開の進捗はJSONLで画面に伝えます。正常終了と期待する完了通知の両方を確認してから、その版を選択して設定を保存します。helperが見つからない場合に、旧Python版の同期ダウンロードへ戻る処理はありません。
 
-導入するNW.jsはネイティブのアーキテクチャを優先します。Apple Siliconでx64版しかないリリースを選ぶ場合は、Rosetta利用への明示的な同意が必要です。ただし、今回の実機確認はarm64に限られ、Rosettaでの動作は未検証です。
+**Intel Mac・Rosetta実行は非対応です。** Apple SiliconでもIntel版PythonをRosettaで実行している場合は、ログの消去や設定の変更より前に起動を拒否し、native arm64 Pythonを案内します。NW.jsの一覧には公式のmacOS arm64配布がある版だけを出し、x64へのフォールバックやRosetta同意・起動分岐はありません。helperの導入CLIは`install --root ABS --version vX.Y.Z`のみで、旧`--arch`・`--rosetta`はエラーです。
+
+MKXP-Zの既存`Z-universal.zip`とEasyRPGの既存公式CI URLは維持しますが、配布名やサイト表記だけで対応を判断しません。取得後・検出時・起動／書き出し前に、主実行ファイルのMach-O thin/FATヘッダーを標準ライブラリで検査します。arm64 sliceのある外部Universalバイナリは受け入れ、起動は`/usr/bin/arch -arm64`に固定します（EasyRPG書き出し用スクリプトも同様）。x86 sliceの削除や再署名は行いません。Intel-only・破損・欠落した実行ファイルは明示的に拒否し、別配布へ勝手に切り替えません。これは全dylib・ゲーム互換性・署名の保証ではありません。ランチャー実行時に`lipo`やCommand Line Toolsは不要です。
+
+EasyRPG公式CIの[build 1969ログ](https://ci.easyrpg.org/job/player-macos/1969/consoleText)には`CMAKE_OSX_ARCHITECTURES=x86_64;arm64`とUniversal署名・ZIP転送の記録があります。ただし今後取得する内容も必ず検査します。EasyRPG/MKXP-Z更新は、新しいダウンロード・展開・arm64確認が終わるまで旧版を消さず、stagingから切り替えます。切替失敗時は旧版を復元し、復元自体が失敗した場合も管理フォルダーの`.アプリ名.previous`を回復用に残します。
 
 ### ダウンロードと既存版の扱い
 
-helperは公式の`SHASUMS256.txt`とダウンロードしたアーカイブのSHA-256を照合してから展開します。チェックサムの欠落、不正なアーカイブ、通信エラー、アーキテクチャの不一致があれば、そのまま導入を進めずエラーにします。作業場所は`~/Library/Application Support/RPGM-Launcher`内の専用の非公開一時ディレクトリ（`.nwjs-stage-*`）です。導入完了までは作業用ディレクトリを版一覧に出さず、一覧には実行可能な`nwjs.app/Contents/MacOS/nwjs`がある版だけを表示します。
+helperは公式の`SHASUMS256.txt`とダウンロードしたアーカイブのSHA-256を照合してから展開します。チェックサムの欠落、不正なアーカイブ、通信エラー、アーキテクチャの不一致があれば、そのまま導入を進めずエラーにします。作業場所は`~/Library/Application Support/RPGM-Launcher`内の専用の非公開一時ディレクトリ（`.nwjs-stage-*`）です。導入完了までは作業用ディレクトリを版一覧に出さず、一覧にはarm64で実行可能な`nwjs.app/Contents/MacOS/nwjs`がある版だけを表示します。旧x64ランタイム、x64/Rosetta receipt、`run-with-rosetta`マーカーのある版は隠し、直接起動・書き出しを要求されてもゲーム補修前に拒否します。旧データは自動削除しません。
 
 失敗したからといって、既存版を削除したり置き換えたりはしません。helperで導入済みの同じ版は再検証し、条件が一致すれば再ダウンロードせずに完了します。一方、旧ランチャーが導入した版、不完全な版、条件の合わない同名ディレクトリは、勝手に上書きせず残します。置き換えたい場合は先にバックアップし、正常な旧版なら明示的にアンインストールしてください。一覧に出ない不完全なディレクトリは、内容の手動確認が必要になることがあります。
 
@@ -41,7 +45,9 @@ Go側の導入とPython側のNW.js削除・`Uninstall All`は、OSの`flock`で�
 
 ## どこまで確認できているか
 
-以下のGo移行・mise切替時のテスト件数と実ゲーム試験は、上記の機能撤去前の記録です。今回の撤去後に実ゲームを再試験した結果ではありません。
+ARM専用化では、先に失敗するテストを記録したうえでPython/Qt **58件（skipなし）**が成功しました。native hostの副作用なし拒否、thin/FATの不正ヘッダー・Intel-only拒否、Universalのarm64許容、旧x64／マーカーの非破壊拒否、起動・書き出し前の検査、外部ランタイム更新失敗時の旧版保持と復元失敗時の回復コピー保持を含みます。arm64 helperとarm64 PyInstaller `.app`をビルドし、同梱主実行ファイル／helperのarm64検査、隔離HOMEでのoffscreen起動3秒、ローカルad-hoc署名の厳密検証も成功しました。RED/GREEN・ビルド記録は無視対象の`build/validation/arm-only/`です。実ゲームの再試験や外部ランタイムの新規ダウンロード、Developer ID署名・公証・Finder/Gatekeeper検証は行っていません。
+
+以下のGo移行・mise切替時のテスト件数、320版の一覧、3アーキテクチャのビルド、Rosetta同意、実ゲーム試験は、機能撤去・ARM専用化より前の履歴です。現在の対応範囲やARM専用化後の実ゲーム再試験を示すものではありません。
 
 Go移行時の検証では、Python/Qt連携23件と安全性16件の計39テスト、およびGoの`test`・`test -race`・`vet`が成功しました。Qt連携は実際のイベントループと偽の実行可能helperを使い、分割されたUTF-8/JSONL、末尾改行なし、一覧取得から導入への遷移、起動失敗、異常終了、不正・欠落した完了通知、Rosetta同意、キャンセルと強制終了、終了待ち、操作の無効化、成功時だけの更新を確認しています。ビルド済みの実Go helperとPythonの間で、同じロックが効くことも確認しました。
 
@@ -49,13 +55,13 @@ Go移行時の実機検証では、Apple Silicon上でGo helperからNW.js SDK 0
 
 このゲーム試験はhelperが導入したランタイムを直接起動したものです。**ランチャーの`Start Game`、パッチ、書き出しまで通した実ゲーム検証ではありません。** 別途行った実Qt→Goの接続試験も、導入済みの同じ版を再検証して完了する経路であり、GUIから初回ダウンロードを最後まで通す試験ではありません。
 
-音声が実際に聞こえること、ほかのMZ作品やプラグイン、MVやそれ以外のエンジン、Intel/Universal2での実行、Rosetta、長時間動作は未検証です。MKXP-Z/EasyRPGや書き出しなどの既存機能はコードに残っていますが、今回のGo移行で動作保証が追加されたわけではありません。配布用署名・公証とGatekeeper/Finder経由の挙動も未確認です。
+音声が実際に聞こえること、ほかのMZ作品やプラグイン、MVやそれ以外のエンジン、長時間動作は未検証です。Intel/RosettaおよびUniversal2版ランチャーの配布は現在の対象外です。MKXP-Z/EasyRPGや書き出しなどの既存機能はコードに残っていますが、今回のGo移行で動作保証が追加されたわけではありません。配布用署名・公証とGatekeeper/Finder経由の挙動も未確認です。
 
-## ソースから試す・ビルドする（macOS）
+## ソースから試す・ビルドする（macOS Apple Silicon arm64のみ）
 
 このforkのソースを取得し、リポジトリのルートで以下を実行してください。[上流のビルド済みリリース](https://github.com/m5kro/RPG-Maker-MacOS-Launcher/releases/latest)は元プロジェクトの配布物であり、ここで説明しているGo移行を含むものではありません。
 
-必要なのは[mise](https://mise.jdx.dev/getting-started.html)とXcode Command Line Tools（`lipo`を使用）です。`mise.toml`でPython **3.11.18**とGo **1.27.3**を完全な版番号で固定しています（`go.mod`の最低要件は1.25のままです）。`requirements-dev.txt`で固定したQt 6.12のwheelは**macOS 14以上**を必要とします。古いmacOSでは別のQt・依存関係の組み合わせを検証する必要があります。Goはhelperのビルドに使い、完成したアプリにはhelperの実行ファイルを同梱します。
+ビルドに必要なのはApple Silicon Mac、native arm64 Python、[mise](https://mise.jdx.dev/getting-started.html)とXcode Command Line Tools（ビルド成果物の検査に`lipo`を使用）です。`mise.toml`でPython **3.11.18**とGo **1.27.3**を完全な版番号で固定しています（`go.mod`の最低要件は1.25のままです）。`requirements-dev.txt`で固定したQt 6.12のwheelは**macOS 14以上**を必要とします。古いmacOSでは別のQt・依存関係の組み合わせを検証する必要があります。Goはhelperのビルドに使い、完成したアプリにはhelperの実行ファイルを同梱します。
 
 以前の検証で使ったPython 3.11.2はmiseのmacOS arm64向け配布バイナリにないため、古い版をソースビルドする代わりに、`mise latest python@3.11`と配布バイナリ一覧で確認した3.11系の最新patch、3.11.18を採用しました。3.12以上には上げていません。miseの通常のTLS検証で取得したnative Pythonを使い、標準の`venv`でプロジェクト内の`.venv`を自動作成・選択します。手動のactivateやシステム全体へのpipインストールは不要です。別のPythonで作成済みの`.venv`は自動置換されないため、必要なら退避してから作り直してください。
 
@@ -68,7 +74,8 @@ mise run test
 
 # NW.js helperだけを生成します（GUIアプリのビルドではありません）。
 # 既存のsh scripts/build-nwjs-helper.shを実行し、CGO_ENABLED=0で
-# arm64・x64・Universal2を生成・検査して、無視対象のbuild/に保存します。
+# arm64だけを生成・検査して、無視対象のbuild/に保存します。
+# 過去のx64/Universal2成果物は自動削除しませんが、利用しません。
 mise run build
 
 # ソースからGUIを起動します（先にhelperをビルドします）。
@@ -77,7 +84,7 @@ mise run run
 
 MV・MZを試す場合は、画面の`Install NWJS Version`からゲームに合う版を導入し、`Select Game Folder`でバックアップ済みのゲームコピーを選びます。通常はその後に`Start Game`で起動する流れですが、前述のとおり今回の実ゲーム検証はこのボタン経由ではありません。パッチなどの設定を確認し、原本ではなく検証用コピーで試してください。元の操作説明として、[xem](https://forums.rpgmakerweb.com/index.php?members/xem.159435/)/[pgm](https://www.youtube.com/channel/UCWTsqPj8SD8rHL9gsBZI59Q)による[解説動画](https://www.youtube.com/watch?v=NIRiKIjhXHk)もありますが、このforkの変更前の案内です。
 
-ソース実行時は、実行中のPythonのアーキテクチャに応じて`build/helpers/arm64/nwjs-helper`または`build/helpers/x64/nwjs-helper`を使います。探索の基準はプロジェクトの`__file__`からの絶対パスで、`PATH`ではありません。helperがない、または実行できない場合は、ビルドコマンドを含むエラーになります。
+ソース実行時は常に`build/helpers/arm64/nwjs-helper`を使います。探索の基準はプロジェクトの`__file__`からの絶対パスで、`PATH`ではありません。helperがない、または実行できない場合は、ビルドコマンドを含むエラーになります。
 
 ### テストとアプリ化
 
@@ -86,17 +93,14 @@ Python/Qtの通常テストはネットワークや実ゲームを使わず、�
 ```sh
 mise run test
 
-# Python/Qtのアーキテクチャに対応するspecを選びます。以下はarm64の例です。
+# 配布はarm64のみ。native arm64 Python/Qtでビルドします。
 mise run build
 mise exec -- python -m PyInstaller --noconfirm RPG-Maker-Launcher-arm64.spec
-# x64/Universal2は、別途そのアーキテクチャに対応するPython/Qt環境が必要です。
-# mise exec -- python -m PyInstaller --noconfirm RPG-Maker-Launcher-x64.spec
-# mise exec -- python -m PyInstaller --noconfirm RPG-Maker-Launcher-Universal2.spec
 ```
 
-各specは`build/helpers/{arm64,x64,universal2}/nwjs-helper`の対応する実行ファイルを、データではなくバイナリとして同梱します。アプリ内では、同梱されたPythonリソースと同じ場所のhelperを使います。出力先は`dist/RPG-Maker-Launcher.app`です。`--noconfirm`での再ビルドは既存の`dist/`内の同名成果物を更新します。`build/`、`dist/`、`.venv/`はGitの追跡対象外で、実ゲーム素材、ランタイム、検証画像などの大きな検証物もリポジトリには追加しません。
+`RPG-Maker-Launcher-arm64.spec`は`build/helpers/arm64/nwjs-helper`を、データではなくバイナリとして同梱します。x64/Universal2用specは撤去しました。アプリ内では、同梱されたPythonリソースと同じ場所のhelperを使います。出力先は`dist/RPG-Maker-Launcher.app`です。`--noconfirm`での再ビルドは既存の`dist/`内の同名成果物を更新します。`build/`、`dist/`、`.venv/`はGitの追跡対象外で、実ゲーム素材、ランタイム、検証画像などの大きな検証物もリポジトリには追加しません。
 
-Universal2版には、[Universal2のPython](https://www.python.org/downloads/macos/)と、それに対応するネイティブ依存ライブラリが必要です。Go helperだけを両アーキテクチャ対応にしても、単一アーキテクチャのPython/QtがUniversal2になるわけではなく、miseのnative PythonでUniversal2のGUI配布は保証しません。x64版にも対応するPython/Qtが必要です。specにDeveloper ID署名は設定していません。PyInstallerがローカルで付けるad-hoc署名は、配布用署名や公証の代わりにはなりません。
+外部ランタイムのUniversalバイナリをARM側で使うことと、ランチャー自身のUniversal2配布は別です。ランチャーはarm64のみで、specにDeveloper ID署名は設定していません。PyInstallerがローカルで付けるad-hoc署名は、配布用署名や公証の代わりにはなりません。
 
 Go移行時のビルド・テスト環境は、macOS 26.5.1 arm64、Python 3.11.2、Go 1.27.3、PySide6-Essentials 6.12.0、PyInstaller 6.22.3でした。直接のPython依存関係は`requirements-dev.txt`に固定しています（chardet 5.2.0はpure Python）。当時の検証用venvは`/tmp/rpgm-qt-venv`で、現在の手順の`.venv`とは別の環境です。arm64・x64・Universal2のhelperと、**arm64の.appを実際にビルド**しました。同梱helperはQProcess経由で公式の320リリースを返し、同梱GUIも隔離HOMEのoffscreen起動を3秒間行ってtracebackがないことを確認しました。これは通常の画面操作や配布先での起動保証とは区別しています。
 
