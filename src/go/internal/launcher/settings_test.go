@@ -58,11 +58,6 @@ func TestDataContractSettings(t *testing.T) {
 		t.Fatal(e)
 	}
 	out := string(dataContractRead(t, path))
-	for _, k := range []string{"extract_game_en", "add_cheat_menu"} {
-		if strings.Contains(out, k) {
-			t.Fatal(out)
-		}
-	}
 	if !strings.Contains(out, "9007199254740993") {
 		t.Fatal(out)
 	}

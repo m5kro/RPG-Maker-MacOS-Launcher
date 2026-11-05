@@ -88,25 +88,6 @@ func TestPublishDoesNotReplaceNewTarget(t *testing.T) {
 	noStaging(t, root)
 }
 
-func TestObsoleteArchitectureFlagsRejected(t *testing.T) {
-	c := fixture(t, nil, func(w http.ResponseWriter, r *http.Request) {
-		t.Error("obsolete flags reached network")
-		w.WriteHeader(500)
-	})
-	for _, flags := range [][]string{{"--arch", "arm64"}, {"--arch", "x64"}, {"--rosetta"}, {"--arch", "x64", "--rosetta"}} {
-		t.Run(strings.Join(flags, " "), func(t *testing.T) {
-			root := filepath.Join(t.TempDir(), "managed")
-			code, out, diag := invoke(context.Background(), c, append(args(root), flags...))
-			if code == 0 || out != "" || !strings.Contains(diag, "flag provided but not defined") {
-				t.Fatalf("obsolete flags accepted: %d %q %q", code, out, diag)
-			}
-			if _, err := os.Lstat(root); !os.IsNotExist(err) {
-				t.Fatalf("obsolete flags changed filesystem: %v", err)
-			}
-		})
-	}
-}
-
 func TestRelativeFrameworkSymlink(t *testing.T) {
 	es := append(goodEntries(), zipEntry{appPrefix + "Contents/Frameworks/Test.framework/Versions/A/other", os.ModeSymlink | 0777, []byte("../Current/Test")})
 	c := fixture(t, makeZIP(t, es), nil)

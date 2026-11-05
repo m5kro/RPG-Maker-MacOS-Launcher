@@ -428,15 +428,12 @@ func TestInvalidCLI(t *testing.T) {
 		a[4] = v
 		cases = append(cases, a)
 	}
-	for _, arch := range []string{"arm64", "x64", "amd64", "ARM64", "../x64", ""} {
-		cases = append(cases, append(args(root), "--arch", arch))
-	}
 	for _, r := range []string{"", "relative", "/"} {
 		a := args(root)
 		a[2] = r
 		cases = append(cases, a)
 	}
-	cases = append(cases, append(args(root), "--rosetta"), append(args(root), "extra"))
+	cases = append(cases, append(args(root), "extra"))
 	for _, a := range cases {
 		code, out, diag := invoke(context.Background(), c, a)
 		if code == 0 || out != "" || diag == "" {

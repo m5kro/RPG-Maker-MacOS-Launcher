@@ -68,13 +68,8 @@ func TestRepositoryDistributionResources(t *testing.T) {
 	for _, p := range []string{"assets/icons/icon.png", "assets/icons/colorless-icon.png", "assets/icons/colorless-icon.icns", "assets/icons/old-icon.icns", "src/go/go.mod", "src/go/cmd/launcher/main.go", "src/go/cmd/validate-mz/main.go", "src/go/cmd/nwjs-helper/main.go"} {
 		read(t, filepath.Join(r, p))
 	}
-	for _, p := range []string{"go.mod", "go.work", "main.py", "bg.js", "EasyRPG-Standalone", "packaging/windows"} {
-		if _, e := os.Lstat(filepath.Join(r, p)); !os.IsNotExist(e) {
-			t.Fatal("obsolete root layout", p, e)
-		}
-	}
 	standalone := string(read(t, filepath.Join(r, "packaging/macos/arm64/EasyRPG-Standalone")))
-	if !strings.Contains(standalone, `/usr/bin/arch -arm64 "${0%/*}/EasyRPG Player.app/Contents/MacOS/EasyRPG Player"`) || strings.Contains(standalone, "x86") {
+	if !strings.Contains(standalone, `/usr/bin/arch -arm64 "${0%/*}/EasyRPG Player.app/Contents/MacOS/EasyRPG Player"`) {
 		t.Fatal("standalone architecture")
 	}
 	for _, p := range []string{"scripts/shell/build-launcher.sh", "scripts/shell/build-nwjs-helper.sh"} {
@@ -82,27 +77,12 @@ func TestRepositoryDistributionResources(t *testing.T) {
 		if !strings.Contains(b, "GOARCH=arm64") {
 			t.Fatal(p)
 		}
-		for _, bad := range []string{"GOARCH=amd64", "-create", "universal2"} {
-			if strings.Contains(b, bad) {
-				t.Fatal(p, bad)
-			}
-		}
 	}
 }
 
-func TestGoOnlyTooling(t *testing.T) {
+func TestGoToolingTasks(t *testing.T) {
 	r := repo(t)
-	for _, p := range []string{"src/python", "tests/python", "scripts/python", "packaging/macos/arm64/arm64.spec"} {
-		if _, err := os.Lstat(filepath.Join(r, p)); !os.IsNotExist(err) {
-			t.Fatal("legacy Python tooling remains", p, err)
-		}
-	}
 	mise := string(read(t, filepath.Join(r, "mise.toml")))
-	for _, forbidden := range []string{"python", "pip ", "venv", "PYTHON", "PyInstaller", "node ", "npm ", "npx "} {
-		if strings.Contains(mise, forbidden) {
-			t.Fatal("legacy task dependency", forbidden)
-		}
-	}
 	for _, contract := range []string{`go = "1.27.3"`, "mod download", "mod verify", "test -count=1", "test -race -count=1", "src/go vet", "build-launcher.sh", "smoke-launcher.sh", "./cmd/validate-mz", "dist/RPG-Maker-Launcher.app/Contents/MacOS/launcher"} {
 		if !strings.Contains(mise, contract) {
 			t.Fatal("missing task contract", contract)
@@ -206,11 +186,6 @@ func (f fixture) bundle(t *testing.T, p string) {
 	for key, want := range map[string]string{"CFBundleExecutable": "launcher", "CFBundleIconFile": "icon.icns", "LSMinimumSystemVersion": "13.3", "LSArchitecturePriority.0": "arm64"} {
 		if command(t, "/usr/bin/plutil", "-extract", key, "raw", "-o", "-", filepath.Join(p, "Contents/Info.plist")) != want {
 			t.Fatal(key)
-		}
-	}
-	for _, bad := range []string{"Contents/Frameworks", "Contents/Resources/nwjs-helper"} {
-		if _, e := os.Lstat(filepath.Join(p, bad)); !os.IsNotExist(e) {
-			t.Fatal("legacy bundle entry", bad)
 		}
 	}
 }

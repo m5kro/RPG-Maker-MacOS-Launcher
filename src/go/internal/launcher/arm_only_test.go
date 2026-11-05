@@ -194,9 +194,6 @@ func TestARM64MachOValidation(t *testing.T) {
 			if err != nil || string(b) != `{"version":"v0.100.0","arch":"arm64","rosetta":false}` {
 				t.Fatalf("non-ARM receipt: %s %v", b, err)
 			}
-			if _, err := os.Lstat(filepath.Join(target, "run-with-rosetta")); !os.IsNotExist(err) {
-				t.Fatalf("ARM install created a Rosetta marker: %v", err)
-			}
 		})
 	}
 }

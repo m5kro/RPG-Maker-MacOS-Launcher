@@ -170,7 +170,7 @@ func TestDataContractPrepareSafety(t *testing.T) {
 }
 
 // Ports the MV/MZ x injected-assets x legacy-toggle fixtures from test_safety.py.
-func TestDataContractRemovedFeaturesAndCopyPreparation(t *testing.T) {
+func TestDataContractCopyPreparationPreservesAssets(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	assets := dataContractAssets(t)
@@ -244,11 +244,6 @@ func TestDataContractRemovedFeaturesAndCopyPreparation(t *testing.T) {
 						}
 						if string(dataContractRead(t, filepath.Join(p, n))) != string(b) {
 							t.Fatal("asset changed", n)
-						}
-					}
-					if !injected {
-						if _, e = os.Stat(filepath.Join(p, prefix, "js/plugins/Cheat_Menu.js")); !os.IsNotExist(e) {
-							t.Fatal("injected new cheat")
 						}
 					}
 					for _, p := range profiles {

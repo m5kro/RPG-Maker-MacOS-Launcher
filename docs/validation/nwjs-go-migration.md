@@ -6,6 +6,8 @@
 
 > 現状注記：この記録は機能撤去前の検証です。現在はチート用JS/CSSの注入・除去、`game_en.exe`からの英語版展開、外部セーブ編集サイトへの導線を撤去しています。以下のテスト件数・条件・結果は当時の履歴であり、撤去後の実ゲーム再試験を示すものではありません。通常のゲーム内セーブ・ロード試験の記録はそのまま残しています。
 
+> 回帰テストの現状：撤去済み機能・旧配置・依存ツールの不在だけを示す番兵検査は含めません。以下の不在検査・コマンド拒否wrapperによる結果は当時の履歴として保持し、現役の正常動作・原本保護・危険入力拒否・cleanup検査は継続します。
+
 ## Go-only tooling acceptance (2026-11-05; implementation check, pending independent review)
 
 - Project-only `.venv` and the 13 legacy Python source/test/script/spec files were removed after the independent Go parity gate. The global mise Python executable was hash-checked and left untouched; historical `build/validation/` artifacts were retained.
