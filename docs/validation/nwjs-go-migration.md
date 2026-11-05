@@ -1,19 +1,28 @@
 # Incremental Go migration: real MZ validation
 
-> 配置整理の現状注記：現在のソースは`src/python/`・`src/go/`・`src/javascript/`、Pythonテストは`tests/python/`、配布素材は`packaging/macos/arm64/`、検証スクリプトは`scripts/python/`、helperビルドは`scripts/shell/build-nwjs-helper.sh`です。以下の過去のパス・結果は当時の記録として維持し、末尾「Reproduce safely」だけ現行パスに更新しています。配置整理の証跡は`build/validation/layout/`に分離し、今回の限定再検証は次節に記録します。
+> 現在はGo backend + Wails/system WKWebView + plain webuiです。ソースは`src/go/`・`src/webui/`・`src/javascript/`、配布素材は`packaging/macos/arm64/`、build/smokeは`scripts/shell/`、MZ harnessは`src/go/cmd/validate-mz/`です。Python/Qtのソース・tests・scripts・specとproject venvは撤去済みで、現行miseはGo 1.27.3のみです。以下のPython結果・旧path・旧CLIは当時の履歴として維持し、末尾「Reproduce safely」を現在のGo手順に分けています。配置整理の歴史証跡は`build/validation/layout/`、Go移行gateは`build/validation/python-zero/final-parity-gate/`です。
 
 > ARM専用化の現状注記：ランチャー／Go helperはmacOS Apple Silicon arm64のみ対応します。NW.js一覧もarm64配布のある版のみで、旧`--arch`・`--rosetta`は拒否します。本文の320版・旧CLI・Rosetta同意・3アーキテクチャなどは過去の事実として残し、現在の再実行手順は末尾「Reproduce safely」に分けています。ARM専用化でこの実ゲーム試験を再実行したわけではありません。
 
 > 現状注記：この記録は機能撤去前の検証です。現在はチート用JS/CSSの注入・除去、`game_en.exe`からの英語版展開、外部セーブ編集サイトへの導線を撤去しています。以下のテスト件数・条件・結果は当時の履歴であり、撤去後の実ゲーム再試験を示すものではありません。通常のゲーム内セーブ・ロード試験の記録はそのまま残しています。
 
-## Layout acceptance (2026-11-05; independent review)
+## Go-only tooling acceptance (2026-11-05; implementation check, pending independent review)
+
+- Project-only `.venv` and the 13 legacy Python source/test/script/spec files were removed after the independent Go parity gate. The global mise Python executable was hash-checked and left untouched; historical `build/validation/` artifacts were retained.
+- With Python/pip/PyInstaller and development Node/npm/npx commands denied by PATH wrappers, and PYTHONHOME/PYTHONPATH/VIRTUAL_ENV unset: mise setup, two successive canonical builds, uncached default/production/smoke/combined Go test/race/vet and mod verify passed. Wrapper resolution was checked inside mise; denied invocations: zero. This does **not** claim that Python is absent from the OS. Static subprocess checks complement the wrappers; the MZ child intentionally uses a minimal system PATH and NW.js contains its own Node runtime.
+- Canonical `dist/RPG-Maker-Launcher.app` is a fresh Go bundle, arm64, asset-byte/plist/ad-hoc verified, with no Python/Qt framework leftovers. Distribution tests cover arbitrary output refusal, symlinks, failed build/publish/restore, preserved backup, and a destination appearing during publish (no nested app merge).
+- Fresh native WebKit: 31 checks, heartbeat +4 while busy, cleanup-held cancellation; production startup isolated from smoke. Injected JS exception and suppressed-ready cases exited **1** themselves, without an external timeout/kill. WebKit visibility was hidden; physical UI/accessibility are not proven. The first smoke copy changed only directory/symlink modes under umask 077; retained failure evidence led to a RED→GREEN mode-preserving copy regression. The corrected source/copy trees match in bytes/modes/links.
+- Fresh Go MZ run: 9 PNG/state pairs inspected, keyboard Save → process restart → Continue/Load restored map 1, (7,6), direction 8, switch 2=true. All 1,332 fixture files and original ZIP/runtime hashes unchanged; both owned groups and debug ports cleaned up. Upstream runtime strict-signature failure remains recorded, without re-signing or OS security changes.
+- Evidence: `build/validation/python-zero/final-tooling/` (ignored/local). No new game/runtime download. Developer ID/notarization, Finder/Gatekeeper, VoiceOver/IME/native-dialog/physical input, macOS13.3 and audibility remain unverified.
+
+## Layout acceptance (2026-11-05; historical Python independent review)
 
 - macOS 26.5.1 arm64 / Python 3.11.18 / Go 1.27.3: `mise tasks validate`, `mise run setup`, `pip check`, `mise run test` (**62 Python tests, no skips**), uncached Go `test` / `test -race` / `vet` passed. The 30 moves preserve all Go/JS/icon/dependency bytes; remaining code edits only resolve relocated paths. Other-CWD shell build/source imports, local documentation links, source/frozen resource tests and spec inputs passed.
 - From the repository root, `mise exec -- python -m PyInstaller --clean --noconfirm packaging/macos/arm64/arm64.spec` rebuilt canonical `dist/RPG-Maker-Launcher.app`. Bundled JS/Standalone/icon bytes match source; main/helper are arm64; local ad-hoc strict codesign passed. Source and frozen GUI each stayed alive offscreen for 3 seconds in separate fresh HOMEs without traceback; bundled helper no-op passed.
 - Reused the previously reviewed author fixture ZIP and helper-installed NW.js 0.94.1 in a **fresh copy**, with no game/runtime download. Current CLI no-op passed; relocated harness completed title → keyboard New Game → movement/event → menu Save → quit/relaunch → Continue/Load. All 9 screenshots and state JSON were inspected: map 1, (7,6), direction 8, switch 2=true restored. Original 1,332 fixture files and previous game/save/profile/runtime/HOME stayed unchanged; both runtime processes/debug ports closed. Real Qt/QProcess no-op also passed (65 arm64 releases, 40 timer ticks).
 - Local-only evidence: `build/validation/layout/independent-review/`; game proof: `mz-final/evidence/renderer-1793861038191683000/`. NW.js strict codesign still exits 1 (`code has no resources but signature indicates they must be present`); native stderr retains the known app.nw/macOS warnings. No runtime re-signing or OS protection changes. Audibility, other games, launcher Start Game/patch/export, Developer ID/notarization and Finder/Gatekeeper remain untested.
 
-## ARM-only regression checks (current; separate from the historical game run)
+## ARM-only regression checks (historical Python; separate from the game run)
 
 - TDD evidence: `build/validation/arm-only/python-red-complete.log`, `safety-red.log`, `external-red.log`, `distribution-red.log`; final `python-green.log`: **58 Python/Qt tests passed, no skips**. The first whole-suite RED attempt timed out on the obsolete Rosetta dialog; the completed RED run mocks the dialog closed. `python-green-attempt.log` separately records the old built helper's CLI mismatch during migration, not a retained Python failure.
 - Main executable checks cover arm64 thin and external Universal/FAT32/FAT64 (both byte orders), malformed/truncated/range-invalid input, Intel-only/missing/non-executable/symlink/FIFO rejection, and old NW.js receipt/marker preservation. This is not a complete Mach-O loader, dylib audit or signature validation.
@@ -119,48 +128,32 @@ Observed: install button disabled management while busy; official lookup returne
 
 ## Reproduce safely
 
-**Current ARM-only CLI (not the historical invocation above):** use native darwin/arm64 Python and the rebuilt arm64 helper. Both validation scripts reject unsupported hosts and check the runtime's main Mach-O executable before creating profiles/evidence or launching. The Qt script additionally checks the helper and the arm64-only versions protocol. Main-executable validation is not a dylib/signature/whole-game compatibility guarantee. Intel/Rosetta is unsupported, not an untested fallback.
+**Current ARM-only Go CLI (not the historical Python invocation above):** use native darwin/arm64 Go 1.27.3, Xcode Command Line Tools and a logged-in GUI session. No Python, Qt, venv or development Node CLI is required. The Go harness checks the host, physical absolute input paths, pinned fixture ZIP hash, safe archive members, and arm64 runtime before launching. Main-executable validation is not a dylib/signature/whole-game compatibility guarantee. Intel/Rosetta is unsupported.
 
-Use a fresh ignored/temp directory, a logged-in macOS arm64 GUI session, available disk, and your own reviewed/legal fixture copy. Download budget here is well below 2 GiB. Do not point these scripts at a personal game/save/profile directory. A local HOME, cache, TMPDIR and `--user-data-dir` are **hygiene, not an OS sandbox**; NW.js still has the user's privileges. No credentials are passed in the game subprocess environment. Do not run arbitrary unreviewed games.
+Use existing reviewed/legal inputs and a **nonexistent** output root whose physical parent already exists. Do not point it at personal game/save/profile data. HOME/cache/TMP/profile separation is **hygiene, not an OS sandbox**; NW.js still has user privileges. Review the fixture's notices, entry point, active plugins, data events and save behavior before explicitly consenting. Do not weaken OS security or re-sign the external runtime.
+
+From the repository root (the example reuses local evidence inputs, which are not shipped in Git):
 
 ```sh
+mise run setup
+mise run test
 mkdir -p build/validation
-R=$(mktemp -d "$PWD/build/validation/mz-real.XXXXXX")
-mkdir -p "$R/evidence" "$R/game"
-mise exec -- go -C src/go build -o "$R/nwjs-helper" ./cmd/nwjs-helper
-# Stop on any failure; do not substitute a manually unzipped runtime.
-"$R/nwjs-helper" install --root "$R/runtime" --version v0.94.1 \
-  >"$R/evidence/install.stdout" 2>"$R/evidence/install.stderr"
-curl --fail --location https://dl.nwjs.io/v0.94.1/SHASUMS256.txt \
-  -o "$R/evidence/SHASUMS256.txt"
-curl --fail --location \
-  https://github.com/unacro/rpgmaker-mz-demo/archive/81abd876e3c339fbd7d74323ad8817ad7011cade.zip \
-  -o "$R/fixture.zip"
-python3 - "$R" <<'PY'
-import hashlib, pathlib, stat, sys, zipfile
-r = pathlib.Path(sys.argv[1])
-assert hashlib.sha256((r/'fixture.zip').read_bytes()).hexdigest() == 'ed4ee4c57d1c7b4ababf8900c8e4eb2fc4df1a3094911a6cefa66209810d2b7c'
-with zipfile.ZipFile(r/'fixture.zip') as z:
-    assert sum(i.file_size for i in z.infolist()) < 200*1024*1024
-    for i in z.infolist():
-        p = pathlib.PurePosixPath(i.filename)
-        assert not p.is_absolute() and '..' not in p.parts
-        assert not stat.S_ISLNK(i.external_attr >> 16)
-    z.extractall(r/'game')
-PY
-APP="$R/runtime/v0.94.1/nwjs.app"
-file "$APP/Contents/MacOS/nwjs"
-lipo -archs "$APP/Contents/MacOS/nwjs"
-codesign --verify --deep --strict --verbose=2 "$APP"
-# Review notices/package.json/js/main.js/active plugins/data events/save paths;
-# inspect signature failures without altering signatures/security settings.
-python3 -m venv "$R/venv"
-"$R/venv/bin/pip" install websocket-client==1.9.2
-"$R/venv/bin/python" scripts/python/validate-mz-runtime.py "$R" --reviewed-fixture
-# Use a local venv with src/python/requirements-dev.txt installed for this separate smoke:
-/path/to/qt-venv/bin/python scripts/python/validate-nwjs-qt.py "$R"
+R=$(pwd -P)
+# Both inputs must already exist; missing inputs are errors, not downloads/skips.
+# mz-go-fresh must NOT exist. Choose a new name for each run.
+mise run validate -- \
+  --root "$R/build/validation/mz-go-fresh" \
+  --fixture-zip "$R/build/validation/mz-20260717/fixture.zip" \
+  --runtime "$R/build/validation/mz-20260717/runtime/v0.94.1" \
+  --reviewed-fixture
+
+# Separate opt-in native WebKit GUI acceptance; gui-go-fresh must NOT exist.
+mise run smoke -- "$R/build/validation/gui-go-fresh" \
+  "$R/build/validation/mz-20260717/runtime/v0.94.1" --reviewed-runtime
 ```
 
-The real harness uses assertions as its live self-check. Never run it with Python `-O`. Use a fresh fixture/save directory for repetitions; existing file-1 saves are refused rather than deleted. The Qt smoke refuses to reuse `qt-home`. Artifacts remain for inspection; neither script deletes user data. If GUI launch/permissions fail, retain logs and perform the same New Game → movement/event → Save → quit/relaunch → Continue sequence manually only after resolving the blocker without weakening OS security.
+Equivalent MZ entry point: `mise exec -- go -C src/go run ./cmd/validate-mz` with the same four arguments. It copies the pinned archive/runtime, never downloads or patches them, drives only keyboard input through CDP for gameplay, checks Save → restart → Load, records nine PNG/state pairs, rechecks all 1,332 source files and source hashes, and cleans up only owned process groups/debug ports. Inspect `evidence/result.json`, cleanup JSON, images and state JSON; process startup alone is not success. The known upstream strict-signature failure is recorded, not repaired. Unexpected signature/OS failures are blockers.
+
+The GUI smoke builds a dedicated smoke-tagged app, creates a fresh sibling HOME/root with an ownership marker, copies the reviewed runtime and runs 31 WebKit checks. Production builds do not expose the smoke service. Artifacts remain for inspection; repeated roots are refused instead of deleting saves. Normal `mise run test` never starts these native acceptance runs. If launch/permissions fail, retain logs and resolve the blocker without security bypasses before any manual gameplay.
 
 **Uncovered:** other MZ maps/battles/plugins, MV, XP/VX/VX Ace, EasyRPG, Intel/Rosetta, other NW.js releases/macOS versions, long sessions, input devices, audibility, export/patching/cheats, and signed/notarized distribution. None should be inferred from this one-fixture success.
