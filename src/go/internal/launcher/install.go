@@ -1,4 +1,4 @@
-package main
+package launcher
 
 import (
 	"bytes"
@@ -26,12 +26,9 @@ type receipt struct {
 	Rosetta bool   `json:"rosetta"`
 }
 
-func install(ctx context.Context, c config, e *emitter, o installOptions) (app string, err error) {
+func install(ctx context.Context, c config, progress ProgressFunc, o installOptions) (app string, err error) {
 	if !versionPattern.MatchString(o.version) {
 		return "", errors.New("version must be vX.Y.Z (stable numeric release)")
-	}
-	if !filepath.IsAbs(o.root) || filepath.Clean(o.root) == string(os.PathSeparator) || strings.ContainsRune(o.root, 0) {
-		return "", errors.New("root must be an absolute managed directory, not filesystem root")
 	}
 	root, err := managedRoot(o.root)
 	if err != nil {
@@ -73,14 +70,14 @@ func install(ctx context.Context, c config, e *emitter, o installOptions) (app s
 		return "", err
 	}
 	zipPath := filepath.Join(stage, "download.zip")
-	if err := download(ctx, c, e, c.downloadBase+"/"+o.version+"/"+archive, zipPath, checksum); err != nil {
+	if err := download(ctx, c, progress, c.downloadBase+"/"+o.version+"/"+archive, zipPath, checksum); err != nil {
 		return "", err
 	}
 	unpacked := filepath.Join(stage, "unpacked")
 	if err := os.Mkdir(unpacked, 0700); err != nil {
 		return "", err
 	}
-	if err := extract(ctx, zipPath, unpacked, prefix, e); err != nil {
+	if err := extract(ctx, zipPath, unpacked, prefix, progress); err != nil {
 		return "", fmt.Errorf("extract: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -147,7 +144,7 @@ func archiveChecksum(manifest []byte, name string) ([]byte, error) {
 	return found, nil
 }
 
-func download(ctx context.Context, c config, e *emitter, url, path string, want []byte) error {
+func download(ctx context.Context, c config, progress ProgressFunc, url, path string, want []byte) error {
 	resp, err := c.get(ctx, url)
 	if err != nil {
 		return err
@@ -160,7 +157,7 @@ func download(ctx context.Context, c config, e *emitter, url, path string, want 
 	if total < 0 {
 		total = 0
 	}
-	if err := e.progress("download", 0, total); err != nil {
+	if err := progress.report("download", 0, total); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -168,30 +165,30 @@ func download(ctx context.Context, c config, e *emitter, url, path string, want 
 		return err
 	}
 	defer f.Close()
-	n, err := copyProgress(ctx, f, resp.Body, maxArchive, e, "download", 0, total)
+	n, err := copyProgress(ctx, f, resp.Body, maxArchive, progress, "download", 0, total)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
 	if resp.ContentLength >= 0 && n != resp.ContentLength {
 		return io.ErrUnexpectedEOF
 	}
-	if err := e.progress("download", n, n); err != nil {
+	if err := progress.report("download", n, n); err != nil {
 		return err
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	if err := e.progress("verify", 0, n); err != nil {
+	if err := progress.report("verify", 0, n); err != nil {
 		return err
 	}
 	h := sha256.New()
-	if _, err := copyProgress(ctx, h, f, maxArchive, e, "verify", 0, n); err != nil {
+	if _, err := copyProgress(ctx, h, f, maxArchive, progress, "verify", 0, n); err != nil {
 		return err
 	}
 	if !bytes.Equal(h.Sum(nil), want) {
 		return errors.New("archive SHA-256 checksum mismatch")
 	}
-	return e.progress("verify", n, n)
+	return progress.report("verify", n, n)
 }
 
 func regularFile(path string) (os.FileInfo, error) {

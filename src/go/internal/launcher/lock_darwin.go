@@ -1,15 +1,43 @@
-package main
+package launcher
 
 import (
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 )
 
+// AcquireManagedLock obtains the same nonblocking, exclusive lock used by InstallNW
+// and the helper CLI. Callers modifying external engines under root must hold it
+// throughout their mutation, but must not call InstallNW while holding it.
+// It requires macOS arm64 and an absolute, user-owned managed directory that is
+// not group/world writable. A missing root is created with mode 0700; a final
+// symlink is rejected (system ancestor symlinks such as /var remain allowed).
+// The returned release is safe to call more than once. The lock file is never
+// removed: every cooperating caller must keep using the same persistent inode.
+func AcquireManagedLock(root string) (release func(), err error) {
+	if err := checkHost(runtime.GOOS, runtime.GOARCH); err != nil {
+		return nil, err
+	}
+	root, err = managedRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := acquireLock(root)
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = lock.Close() }, nil
+}
+
 // The macOS backend uses flock without cgo; host selection permits only darwin/arm64.
 func managedRoot(name string) (string, error) {
+	if !filepath.IsAbs(name) || filepath.Clean(name) == string(os.PathSeparator) || strings.ContainsRune(name, 0) {
+		return "", errors.New("root must be an absolute managed directory, not filesystem root")
+	}
 	name = filepath.Clean(name)
 	if err := os.MkdirAll(name, 0700); err != nil {
 		return "", err

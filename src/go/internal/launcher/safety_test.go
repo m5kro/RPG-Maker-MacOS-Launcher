@@ -1,4 +1,4 @@
-package main
+package launcher
 
 import (
 	"archive/zip"
@@ -249,21 +249,13 @@ func TestOfficialRedirectPolicy(t *testing.T) {
 	}
 }
 
-// These endpoints exist only in the test binary; production has no URL override flags or environment variables.
-func TestProcessWorker(t *testing.T) {
-	root := os.Getenv("NWJS_TEST_ROOT")
-	if root == "" {
-		return
-	}
-	c := config{client: &http.Client{Timeout: time.Minute}, downloadBase: os.Getenv("NWJS_TEST_SERVER"), hostOS: "darwin", hostArch: "arm64"}
-	os.Exit(process(c, args(root)))
-}
-
 func child(t *testing.T, root, server string) *exec.Cmd {
 	t.Helper()
-	binary, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
+	binary := filepath.Join(t.TempDir(), "nwjs-helper.test")
+	// Build the command's test entrypoint, not a library worker with copied signal handling.
+	build := exec.Command("go", "test", "-race", "-c", "-o", binary, "../../cmd/nwjs-helper")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build helper subprocess: %v\n%s", err, output)
 	}
 	cmd := exec.Command(binary, "-test.run=^TestProcessWorker$")
 	cmd.Env = append(os.Environ(), "NWJS_TEST_ROOT="+root, "NWJS_TEST_SERVER="+server)

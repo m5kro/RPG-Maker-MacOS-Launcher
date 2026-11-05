@@ -1,4 +1,4 @@
-package main
+package launcher
 
 import (
 	"archive/zip"
@@ -29,7 +29,7 @@ func archiveName(name, prefix string) (string, error) {
 	return clean, nil
 }
 
-func extract(ctx context.Context, archive, dest, prefix string, e *emitter) error {
+func extract(ctx context.Context, archive, dest, prefix string, progress ProgressFunc) error {
 	z, err := zip.OpenReader(archive)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func extract(ctx context.Context, archive, dest, prefix string, e *emitter) erro
 			}
 		}
 	}
-	if err := e.progress("extract", 0, total); err != nil {
+	if err := progress.report("extract", 0, total); err != nil {
 		return err
 	}
 	type link struct{ path, target string }
@@ -121,7 +121,7 @@ func extract(ctx context.Context, archive, dest, prefix string, e *emitter) erro
 				r.Close()
 				return err
 			}
-			n, err = copyProgress(ctx, w, r, int64(f.UncompressedSize64), e, "extract", completed, total)
+			n, err = copyProgress(ctx, w, r, int64(f.UncompressedSize64), progress, "extract", completed, total)
 			closeErr := errors.Join(w.Close(), r.Close())
 			if err := errors.Join(err, closeErr); err != nil {
 				return err
@@ -136,7 +136,7 @@ func extract(ctx context.Context, archive, dest, prefix string, e *emitter) erro
 		}
 		completed += n
 		if time.Since(last) >= 100*time.Millisecond {
-			if err := e.progress("extract", completed, total); err != nil {
+			if err := progress.report("extract", completed, total); err != nil {
 				return err
 			}
 			last = time.Now()
@@ -159,5 +159,5 @@ func extract(ctx context.Context, archive, dest, prefix string, e *emitter) erro
 			return err
 		}
 	}
-	return e.progress("extract", completed, total)
+	return progress.report("extract", completed, total)
 }
