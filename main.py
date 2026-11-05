@@ -5,14 +5,12 @@ import subprocess
 import requests
 import zipfile
 import shutil
-import tempfile
 import platform
 import chardet
 import logging
 import re
 from pathlib import Path
 from functools import partial
-from evbunpack.__main__ import unpack_files
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
@@ -159,12 +157,6 @@ class RPGMLauncher(QMainWindow):
         version_layout.addWidget(self.version_selector)
         self.layout.addLayout(version_layout)
 
-        self.extract_checkbox = QCheckBox("Extract game_en.exe (overwrites game files; back up first)", self)
-        self.layout.addWidget(self.extract_checkbox)
-
-        self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
-        self.layout.addWidget(self.cheat_menu_checkbox)
-
         self.optimize_space_checkbox = QCheckBox("Optimize Space (Unavailable: original files are protected)", self)
         self.optimize_space_checkbox.setEnabled(False)
         self.layout.addWidget(self.optimize_space_checkbox)
@@ -190,9 +182,6 @@ class RPGMLauncher(QMainWindow):
         self.layout.addWidget(self.export_button)
         self.export_button.setEnabled(False)  # Disable until conditions are met
 
-        self.open_save_editor_button = QPushButton("Open Save Editor", self)
-        self.layout.addWidget(self.open_save_editor_button)
-
         self.install_button = QPushButton("Install NWJS Version", self)
         self.layout.addWidget(self.install_button)
 
@@ -213,7 +202,6 @@ class RPGMLauncher(QMainWindow):
         self.select_button.clicked.connect(self.select_folder)
         self.start_game_button.clicked.connect(self.start_game)
         self.export_button.clicked.connect(self.export_standalone_app)
-        self.open_save_editor_button.clicked.connect(self.open_save_editor)
         self.mkxpz_advanced_button.clicked.connect(self.open_mkxpz_advanced_settings)
         self.easyrpg_advanced_button.clicked.connect(self.open_easyrpg_advanced_settings)
         self.open_log_button.clicked.connect(self.open_log)
@@ -231,15 +219,12 @@ class RPGMLauncher(QMainWindow):
             "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
             "3. Optional Options:\n"
-            "   - 'Extract game_en.exe': Overwrites game files with the English version. Back up first; partial changes cannot be rolled back. Leave OFF for safe test-game checks.\n"
-            "   - 'Add Cheat Menu': Patch the game with a cheat menu (Press [1] key while in game).\n"
             "   - 'Optimize Space': Unavailable to protect original game files.\n"
             "   - 'Disable Protection': Allows child_process to be used and allows outbound connections.\n"
             "   - 'Patch Bitmap.getPixel': Fixes crashes related to NaN/Infinity in Bitmap.getPixel.\n\n"
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
             "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
-            "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
-            "7. Click 'Uninstall Component' to remove installed versions of NWJS or other components.\n"
+            "6. Click 'Uninstall Component' to remove installed versions of NWJS or other components.\n"
             "_____________________________________________________________________________\n"
             "RPG Maker 2000, 2003, XP, VX, and VX Ace games:\n\n"
             "1. Move game folder to anywhere but the 'Downloads' folder. (XP, VX, VX Ace only)\n\n"
@@ -270,8 +255,6 @@ class RPGMLauncher(QMainWindow):
             "lecrolonk - Donator\n\n"
             "athanadoc05 - Donator\n\n"
             "mkxp-z maintainers - MKXP-Z\n\n"
-            "Andmi Kuzgri - Save Editor Online\n\n"
-            "emerladCoder - Cheat Menu Plugin\n\n"
             "SynthFont developers - Soundfont\n\n"
             "Orochimarufan - Kawariki Patches\n\n"
             "EasyRPG Team - EasyRPG Player\n\n"
@@ -299,8 +282,6 @@ class RPGMLauncher(QMainWindow):
             try:
                 with open(self.SETTINGS_FILE, 'r') as file:
                     settings = json.load(file)
-                    self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
-                    self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
                     self.optimize_space_checkbox.setChecked(False)
                     self.disable_protection_checkbox.setChecked(settings.get('disable_protection', False))
                     self.getpixel_patch_checkbox.setChecked(settings.get('patch_getpixel', True))
@@ -326,8 +307,6 @@ class RPGMLauncher(QMainWindow):
 
     def save_settings(self):
         settings = {
-            'extract_game_en': self.extract_checkbox.isChecked(),
-            'add_cheat_menu': self.cheat_menu_checkbox.isChecked(),
             'optimize_space': self.optimize_space_checkbox.isChecked(),
             'disable_protection': self.disable_protection_checkbox.isChecked(),
             'patch_getpixel': self.getpixel_patch_checkbox.isChecked(),
@@ -973,49 +952,6 @@ class RPGMLauncher(QMainWindow):
         # If no RTP value is found, default to Standard RTP (RPG Maker XP)
         return "Standard", 1
 
-    # Some japanese RPG Maker games use game_en.exe to patch the game with the English version
-    # They need to be extracted using evbunpack and the files copied to the game folder
-    def check_and_unpack_game_en(self, folder_path):
-        game_exe = None
-
-        for root, _, files in os.walk(folder_path):
-            for file in files:
-                if file.lower() == "game_en.exe":
-                    game_exe = os.path.join(root, file)
-                    break
-            if game_exe:
-                break
-
-        if not game_exe:
-            logging.error("game_en.exe not found in the directory")
-            return False
-
-        response = QMessageBox.question(
-            self, "Extraction overwrites game files",
-            "Extraction keeps the original EXE but overwrites other game files. "
-            "A failure can leave partial changes; there is no rollback. Back up the game first. "
-            "Leave extraction disabled for safe test-game checks. Continue?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if response != QMessageBox.Yes:
-            return False
-
-        # shortcut: copying extracted assets is not transactional; add rollback before claiming safe in-place patching.
-        with tempfile.TemporaryDirectory(prefix="rpgm-extract-") as extracted_dir:
-            unpack_files(game_exe, extracted_dir, False, False)
-            # Exclude a same-named payload so even nested original EXEs are retained.
-            extracted_exe = Path(extracted_dir) / os.path.relpath(game_exe, folder_path)
-            if os.path.lexists(extracted_exe):
-                extracted_exe.unlink()
-            for item in os.listdir(extracted_dir):
-                s = os.path.join(extracted_dir, item)
-                d = os.path.join(folder_path, item)
-                if os.path.isdir(s):
-                    shutil.copytree(s, d, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(s, d)
-        logging.info("game_en.exe extracted; original EXE retained.")
-        return True
-
     def add_protection_script(self, folder_path):
         scripts = ('bg.js', 'disable-child.js', 'disable-net.js')
         # Preflight every collision before creating anything; never replace user scripts.
@@ -1201,18 +1137,9 @@ class RPGMLauncher(QMainWindow):
         if self.check_package_json(folder_path):
             logging.info("Launching game using NWJS.")
 
-            if self.extract_checkbox.isChecked():
-                if not self.check_and_unpack_game_en(folder_path):
-                    return
-
             if not self.prepare_package_json(folder_path):
                 return
 
-            if self.cheat_menu_checkbox.isChecked():
-                self.add_cheat_menu(folder_path)
-            else:
-                self.remove_cheat_menu(folder_path)
-            
             patch_res = self.patch_rpgm_getpixel(folder_path, enable=self.getpixel_patch_checkbox.isChecked())
             if not patch_res.get("ok"):
                 logging.warning("getPixel patch: %s", patch_res.get("message"))
@@ -1429,13 +1356,6 @@ class RPGMLauncher(QMainWindow):
                 nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
                 nwjs_app_src = os.path.join(nwjs_dir, "nwjs.app")
                 nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
-
-                if self.extract_checkbox.isChecked():
-                    if not self.check_and_unpack_game_en(self.last_selected_folder):
-                        return
-
-                if self.cheat_menu_checkbox.isChecked():
-                    self.add_cheat_menu(self.last_selected_folder)
 
                 # Count files while skipping anything inside the destination .app
                 total_files = 0
@@ -2358,248 +2278,6 @@ class RPGMLauncher(QMainWindow):
         self.update_version_selector()
         self.check_start_game_button()
         QMessageBox.information(self, "Uninstall All", "All components uninstalled successfully.")
-
-    def open_save_editor(self):
-        save_editor_url = "https://saveeditor.online/"
-        www_save_folder = os.path.join(self.last_selected_folder, "www", "save")
-        save_folder = os.path.join(self.last_selected_folder, "save")
-
-        try:
-            subprocess.run(["open", save_editor_url], check=True)
-            logging.info("Opened Save Editor website.")
-
-            if os.path.exists(www_save_folder):
-                subprocess.run(["open", www_save_folder], check=True)
-                logging.info(f"Opened save folder: {www_save_folder}")
-            elif os.path.exists(save_folder):
-                subprocess.run(["open", save_folder], check=True)
-                logging.info(f"Opened save folder: {save_folder}")
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to open: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Failed to open: {str(e)}")
-
-    # Add or remove the cheat menu for RPG Maker MV and MZ games
-    def add_cheat_menu(self, folder_path):
-        www_folder_path = os.path.join(folder_path, "www")
-        cheat_menu_js_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js')
-        cheat_menu_css_path = os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css')
-        if os.path.exists(www_folder_path) and os.path.isdir(www_folder_path):
-            logging.info("The 'www' folder exists in the selected folder, likely RPG MV.")
-            if self.modify_MV_main_js(os.path.join(www_folder_path, 'js', 'main.js')):
-                logging.info("RPG MV main.js has been patched with cheat menu.")
-                self.copy_cheat_files(www_folder_path)
-            else:
-                logging.info("RPG MV main.js has already been patched with cheat menu.")
-        else:
-            logging.info("The 'www' folder does not exist in the selected folder, likely RPG MZ.")
-            if self.modify_MZ_main_js(os.path.join(folder_path, 'js', 'main.js')):
-                logging.info("RPG MZ main.js has been patched with cheat menu.")
-                self.copy_cheat_files(folder_path)
-            else:
-                logging.info("RPG MZ main.js has already been patched with cheat menu.")
-
-    def copy_cheat_files(self, target_folder):
-        plugins_folder = os.path.join(target_folder, 'js', 'plugins')
-        os.makedirs(plugins_folder, exist_ok=True)
-        shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.js'), plugins_folder)
-        shutil.copy(os.path.join(os.path.dirname(__file__), 'Cheat_Menu.css'), plugins_folder)
-        logging.info("Cheat_Menu.js and Cheat_Menu.css copied to %s", plugins_folder)
-    
-    def remove_cheat_menu(self, folder_path):
-        www_folder_path = os.path.join(folder_path, "www")
-        if os.path.exists(www_folder_path) and os.path.isdir(www_folder_path):
-            logging.info("The 'www' folder exists in the selected folder, likely RPG MV.")
-            if self.unmodify_MV_main_js(os.path.join(www_folder_path, 'js', 'main.js')):
-                logging.info("RPG MV main.js has been unpatched from cheat menu.")
-                self.remove_cheat_files(www_folder_path)
-            else:
-                logging.info("RPG MV main.js has not been patched with cheat menu.")
-        else:
-            logging.info("The 'www' folder does not exist in the selected folder, likely RPG MZ.")
-            if self.unmodify_MZ_main_js(os.path.join(folder_path, 'js', 'main.js')):
-                logging.info("RPG MZ main.js has been unpatched from cheat menu.")
-                self.remove_cheat_files(folder_path)
-            else:
-                logging.info("RPG MZ main.js has not been patched with cheat menu.")
-    
-    def remove_cheat_files(self, target_folder):
-        plugins_folder = os.path.join(target_folder, 'js', 'plugins')
-        cheat_menu_js_path = os.path.join(plugins_folder, 'Cheat_Menu.js')
-        cheat_menu_css_path = os.path.join(plugins_folder, 'Cheat_Menu.css')
-        if os.path.exists(cheat_menu_js_path):
-            os.remove(cheat_menu_js_path)
-            logging.info("Removed Cheat_Menu.js from %s", plugins_folder)
-        if os.path.exists(cheat_menu_css_path):
-            os.remove(cheat_menu_css_path)
-            logging.info("Removed Cheat_Menu.css from %s", plugins_folder)
-
-    def modify_MV_main_js(self, file_path):
-        try:
-            with open(file_path, 'r') as file:
-                lines = file.readlines()
-        except Exception as e:
-            logging.error("Failed to read main.js: %s", str(e))
-            return False
-        
-        new_lines = [
-            "PluginManager._path= 'js/plugins/';\n",
-            "PluginManager.loadScript('Cheat_Menu.js');\n"
-        ]
-        
-        if any(line in lines for line in new_lines):
-            logging.info("Cheat menu lines already present in main.js")
-            return False
-        
-        for i, line in enumerate(lines):
-            if "PluginManager.setup($plugins);" in line:
-                lines.insert(i + 1, new_lines[0])
-                lines.insert(i + 2, new_lines[1])
-                break
-        
-        try:
-            with open(file_path, 'w') as file:
-                file.writelines(lines)
-            logging.info("main.js written successfully.")
-        except Exception as e:
-            logging.error("Failed to write main.js: %s", str(e))
-            return False
-        
-        return True
-
-    def modify_MZ_main_js(self, file_path):
-        new_url = 'js/plugins/Cheat_Menu.js'
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-        except Exception as e:
-            logging.error("Failed to read main.js: %s", str(e))
-            return False
-
-        # Grab the inside of the scriptUrls array
-        script_urls_pattern = re.compile(r'const scriptUrls = \[(.*?)\];', re.DOTALL)
-        match = script_urls_pattern.search(content)
-
-        if not match:
-            logging.error('scriptUrls array not found in main.js.')
-            return False
-
-        script_urls_content = match.group(1)
-
-        # Don’t add it twice
-        if new_url in script_urls_content:
-            logging.info("Cheat menu URL already present in main.js")
-            return False
-
-        # Find the rmmz_managers line (with whatever indentation / newline style)
-        managers_pattern = re.compile(r'([ \t]*)"js/rmmz_managers\.js",(\r?\n)')
-
-        def insert_after_managers(m: re.Match) -> str:
-            indent = m.group(1)   # indentation before "js/rmmz_managers.js"
-            newline = m.group(2)  # the newline used in the file (\n or \r\n)
-            # Keep the managers line, then add Cheat_Menu with the same indent/newline
-            return m.group(0) + f'{indent}"{new_url}",{newline}'
-
-        new_script_urls_content, count = managers_pattern.subn(
-            insert_after_managers,
-            script_urls_content,
-            count=1
-        )
-
-        if count == 0:
-            logging.error('rmmz_managers.js not found in scriptUrls array.')
-            return False
-
-        # Stitch everything back together
-        new_content = (
-            content[:match.start(1)]
-            + new_script_urls_content
-            + content[match.end(1):]
-        )
-
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                file.write(new_content)
-            logging.info("main.js written successfully.")
-            return True
-        except Exception as e:
-            logging.error("Failed to write main.js: %s", str(e))
-            return False
-    
-    def unmodify_MV_main_js(self, file_path):
-        try:
-            with open(file_path, 'r') as file:
-                lines = file.readlines()
-        except Exception as e:
-            logging.error("Failed to read main.js: %s", str(e))
-            return False
-
-        lines_to_remove = [
-            "PluginManager._path= 'js/plugins/';\n",
-            "PluginManager.loadScript('Cheat_Menu.js');\n"
-        ]
-
-        if not any(line in lines for line in lines_to_remove):
-            logging.info("Cheat menu lines not present in main.js")
-            return False
-
-        updated_lines = [line for line in lines if line not in lines_to_remove]
-
-        try:
-            with open(file_path, 'w') as file:
-                file.writelines(updated_lines)
-            logging.info("Cheat menu lines removed successfully.")
-        except Exception as e:
-            logging.error("Failed to write main.js: %s", str(e))
-            return False
-
-        return True
-    
-    def unmodify_MZ_main_js(self, file_path):
-        new_url = 'js/plugins/Cheat_Menu.js'
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-        except Exception as e:
-            logging.error("Failed to read main.js: %s", str(e))
-            return False
-
-        script_urls_pattern = re.compile(r'const scriptUrls = \[(.*?)\];', re.DOTALL)
-        match = script_urls_pattern.search(content)
-
-        if not match:
-            logging.error('scriptUrls array not found in main.js.')
-            return False
-
-        script_urls_content = match.group(1)
-        if new_url not in script_urls_content:
-            logging.info("Cheat menu URL not present in main.js")
-            return False
-
-        line_pattern = re.compile(
-            r'^[ \t]*"' + re.escape(new_url) + r'",\r?\n',
-            re.MULTILINE
-        )
-
-        new_script_urls_content, count = line_pattern.subn('', script_urls_content)
-
-        if count == 0:
-            logging.error("Cheat menu URL not found as a separate line in scriptUrls.")
-            return False
-
-        new_content = (
-            content[:match.start(1)]
-            + new_script_urls_content
-            + content[match.end(1):]
-        )
-
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                file.write(new_content)
-            logging.info("Cheat menu URL removed successfully.")
-            return True
-        except Exception as e:
-            logging.error("Failed to write main.js: %s", str(e))
-            return False
 
     def optimize_space(self):
         logging.warning("Optimize Space is unavailable: original game files must be preserved.")

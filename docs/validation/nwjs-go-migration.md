@@ -1,5 +1,7 @@
 # Incremental Go migration: real MZ validation
 
+> 現状注記：この記録は機能撤去前の検証です。現在はチート用JS/CSSの注入・除去、`game_en.exe`からの英語版展開、外部セーブ編集サイトへの導線を撤去しています。以下のテスト件数・条件・結果は当時の履歴であり、撤去後の実ゲーム再試験を示すものではありません。通常のゲーム内セーブ・ロード試験の記録はそのまま残しています。
+
 ## Result and boundary
 
 **Passed for one real MZ fixture on Apple Silicon:** official runtime installation by the new Go helper, a real NW.js renderer, keyboard-driven title → New Game → movement/event → Save → process close/relaunch → Continue/Load, and restored state. Separately, the production Python window/QProcess integration passed against the real helper and an isolated copy of that installation.

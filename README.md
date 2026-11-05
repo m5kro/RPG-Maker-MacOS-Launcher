@@ -6,7 +6,7 @@ RPG Maker製のゲームをmacOSで動かすために、実行環境の導入と
 
 このforkは、[m5kro/RPG-Maker-MacOS-Launcher](https://github.com/m5kro/RPG-Maker-MacOS-Launcher)をもとに、安全性の見直しと段階的なGo移行を進めている派生版です。上流の「開発完了、必要に応じてバグ修正のみ」という案内は元プロジェクトについてのもので、このforkの作業完了を意味しません。上流では、より汎用的な後継として[Xenolauncher](https://github.com/m5kro/Xenolauncher)も案内されています。
 
-今回Goに移したのは、**NW.jsのバージョン一覧取得と、検証付きインストールだけ**です。画面は引き続きPython/PySide6で動き、ゲームの起動・書き出し、パッチ、チート機能、MKXP-Z/EasyRPGの取得もPython側に残っています。全体をGoで書き直したわけではなく、Goを使うことでNW.jsなどのゲーム用ランタイムが不要になるわけでもありません。
+今回Goに移したのは、**NW.jsのバージョン一覧取得と、検証付きインストールだけ**です。画面は引き続きPython/PySide6で動き、ゲームの起動・書き出し、互換性パッチ、MKXP-Z/EasyRPGの取得もPython側に残っています。全体をGoで書き直したわけではなく、Goを使うことでNW.jsなどのゲーム用ランタイムが不要になるわけでもありません。
 
 > [!WARNING]
 > 現時点では配布用の署名・公証を保証していません。実機検証に使ったNW.jsは、リソースの署名封印がないため厳密な`codesign`検証に失敗しました。このホストではセキュリティ回避操作なしで起動しましたが、別のMacやFinder/Gatekeeper経由で起動できることの証明にはなりません。OSが起動を拒否した場合は、保護機能を無効にして続行しないでください。
@@ -31,11 +31,17 @@ Go側の導入とPython側のNW.js削除・`Uninstall All`は、OSの`flock`で�
 
 ## ゲーム原本を守るために変えたこと
 
+日本の利用者向けに機能を整理し、`game_en.exe`からの英語版展開、チート用JS/CSSの注入・除去、外部セーブ改造サイトを開く`Open Save Editor`ボタンを撤去しました。通常のゲーム内セーブ・ロードは対象外です。EasyRPGの汎用的な言語・文字コード対応、保護用JS、`getPixel`パッチ、GoによるNW.js導入は残します。全UIの日本語化や海外ゲームの利用制限を行う変更ではありません。
+
+過去に注入・変更された`main.js`、チート用ファイル、セーブデータは自動で元に戻しません。復元が必要な場合はバックアップや配布元の原本と確認してください。ゲーム原本に含まれる`game_en.exe`や英語素材も勝手に削除せず、書き出し時は通常どおりコピーします。
+
 ゲームフォルダーを選んだだけでは、`package.json`を書き換えたり、ゲーム名に対応するユーザープロファイルを削除したりしないようにしました。起動時の共有NW.jsプロファイル削除、ゲームフォルダー全体への再帰的な`chown`/`chmod`、設定のバージョン違いを理由にした設定一括削除も撤去しています。ゲーム独自のバックグラウンドスクリプトは保持し、保護用スクリプトと衝突した場合も勝手に置き換えません。原本内のWindows向けファイルを削除していた`Optimize Space`は無効です。
 
-これは、ランチャーのすべての操作が非破壊になったという意味ではありません。起動時のメタデータ補修やパッチ、チート追加、展開コピーには、ゲームファイルを書き換える経路が残っています。`Extract game_en.exe`は元のEXEこそ残しますが、ほかのファイルを上書きし、途中で失敗しても変更を巻き戻せません。**ゲームとセーブをバックアップし、試すときは専用のコピーを使い、`Extract game_en.exe`をOFFにしてください。** 信頼できないゲームを安全に隔離するOSサンドボックスでもありません。
+これは、ランチャーのすべての操作が非破壊になったという意味ではありません。保護用JSの配置、`getPixel`パッチ、`package.json`などのJSON補修には、ゲーム原本を書き換える経路が残っています。**ゲームとセーブをバックアップし、試すときは原本ではなく専用のコピーを使ってください。** 信頼できないゲームを安全に隔離するOSサンドボックスでもありません。
 
 ## どこまで確認できているか
+
+以下のGo移行・mise切替時のテスト件数と実ゲーム試験は、上記の機能撤去前の記録です。今回の撤去後に実ゲームを再試験した結果ではありません。
 
 Go移行時の検証では、Python/Qt連携23件と安全性16件の計39テスト、およびGoの`test`・`test -race`・`vet`が成功しました。Qt連携は実際のイベントループと偽の実行可能helperを使い、分割されたUTF-8/JSONL、末尾改行なし、一覧取得から導入への遷移、起動失敗、異常終了、不正・欠落した完了通知、Rosetta同意、キャンセルと強制終了、終了待ち、操作の無効化、成功時だけの更新を確認しています。ビルド済みの実Go helperとPythonの間で、同じロックが効くことも確認しました。
 
@@ -100,7 +106,7 @@ mise切替時には、同じmacOS 26.5.1 arm64上でmise 2026.10.19、native Pyt
 
 元プロジェクトのライセンスを引き継ぎます。GNU GPL v3の全文は[LICENSE](LICENSE)にあります。外部ランタイム、ゲーム本体、素材、フォントなどには、それぞれの利用条件が適用されます。検証に使った公開デモのリポジトリにライセンスがあっても、含まれるRPG Maker素材などの再配布を一律に許可するものとは扱っていません。
 
-ランチャー向けのカスタムMKXP-Z forkは[m5kro/mkxp-z の RPGM-Launcherブランチ](https://github.com/m5kro/mkxp-z/tree/RPGM-Launcher)です。以下は元プロジェクトのクレジットです。
+ランチャー向けのカスタムMKXP-Z forkは[m5kro/mkxp-z の RPGM-Launcherブランチ](https://github.com/m5kro/mkxp-z/tree/RPGM-Launcher)です。以下は元プロジェクトのクレジットです。チートメニューと外部セーブエディターへの謝辞は元プロジェクトの旧機能に関する履歴であり、このforkではそれらの機能・導線を撤去しています。
 
 ### Credits and Special Thanks（元プロジェクト）
 
@@ -115,7 +121,6 @@ Credit to emerladCoder for cheat menu <br>
 https://github.com/emerladCoder/RPG-Maker-MV-Cheat-Menu-Plugin <br>
 <br>
 Credit to SaveEditorOnline for the save editor <br>
-https://saveeditor.online <br>
 <br>
 Credit to SynthFont developers for the Soundfont <br>
 https://musical-artifacts.com/artifacts/841 <br>

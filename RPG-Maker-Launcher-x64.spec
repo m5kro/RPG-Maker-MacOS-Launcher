@@ -6,7 +6,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[(os.path.join(SPECPATH, 'build/helpers/x64/nwjs-helper'), '.')],
-    datas=[('Cheat_Menu.js', '.'), ('Cheat_Menu.css', '.'), ('EasyRPG-Standalone', '.'), ('bg.js', '.'), ('disable-child.js', '.'), ('disable-net.js', '.')],
+    datas=[('EasyRPG-Standalone', '.'), ('bg.js', '.'), ('disable-child.js', '.'), ('disable-net.js', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -1,14 +1,14 @@
 """Behavior tests without importing/starting Qt or reading real user settings.
 
 Only the targeted launcher methods are compiled from AST. All game/home files
-are temporary and subprocess/UI calls are fakes. Extraction is NOT transactional:
-these tests cover staging cleanup and EXE retention, not rollback of overwritten
-assets. Real-game smoke tests must leave extraction disabled.
+are temporary and subprocess/UI calls are fakes. Removed features have explicit
+spies so FakeWindow cannot hide a remaining cheat or extraction call.
 """
 import ast
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import unittest
@@ -20,7 +20,7 @@ METHODS = {
     "__init__", "load_settings", "select_folder", "check_package_json",
     "prepare_package_json", "add_protection_script", "start_game",
     "launch_nwjs_game", "export_standalone_app", "optimize_space",
-    "check_and_unpack_game_en",
+    "patch_rpgm_getpixel",
 }
 
 
@@ -61,12 +61,12 @@ class SafetyTests(unittest.TestCase):
         process.Popen.side_effect = lambda *args, **kwargs: kwargs["stdout"].close()
         self.env = {
             "__file__": str(self.assets / "main.py"), "os": os, "json": json,
-            "shutil": shutil, "tempfile": tempfile, "Path": Path,
+            "shutil": shutil, "re": re, "Path": Path,
             "logging": Mock(), "subprocess": process,
             "chardet": Mock(detect=Mock(return_value={"encoding": "utf-8"})),
             "QMainWindow": FakeWindow, "QMessageBox": message, "HelperProcess": Mock(),
             "QFileDialog": Mock(), "QApplication": Mock(), "Qt": Mock(),
-            "unpack_files": Mock(), "LOG_FILE": str(self.root / "log.txt"),
+            "LOG_FILE": str(self.root / "log.txt"),
             "current_version": "new", "config_version": "old",
         }
         for name in ("QWidget", "QVBoxLayout", "QHBoxLayout", "QPushButton",
@@ -75,6 +75,7 @@ class SafetyTests(unittest.TestCase):
         tree = ast.parse(SOURCE.read_text())
         original = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "RPGMLauncher")
         original.body = [n for n in original.body if isinstance(n, ast.FunctionDef) and n.name in METHODS]
+        self.assertEqual({n.name for n in original.body}, METHODS)
         exec(compile(ast.Module(body=[original], type_ignores=[]), str(SOURCE), "exec"), self.env)
         cls = self.env["RPGMLauncher"]
         self.app = cls.__new__(cls)
@@ -218,63 +219,100 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue((exported / "bg.js").exists())
         self.env["QMessageBox"].critical.assert_not_called()
 
-    def test_extraction_uses_unique_staging_keeps_exe_and_existing_extracted_folder(self):
-        exe = self.game / "game_en.exe"
-        exe.write_text("original exe")
-        existing = self.game / "extracted"
-        existing.mkdir()
-        (existing / "user-save").write_text("keep")
-        staging = []
+    def game_fixture(self, engine, injected, legacy_enabled):
+        self.game = self.root / f"{engine}-{injected}-{legacy_enabled}"
+        self.game.mkdir()
+        self.app.last_selected_folder = str(self.game)
+        self.package({"name": "", "main": "index.html"})
+        prefix = "www/" if engine == "MV" else ""
+        if engine == "MV":
+            main_js = "PluginManager.setup($plugins);\n"
+            if injected:
+                main_js += "PluginManager._path= 'js/plugins/';\nPluginManager.loadScript('Cheat_Menu.js');\n"
+        else:
+            main_js = 'const scriptUrls = [\n    "js/rmmz_managers.js",\n'
+            if injected:
+                main_js += '    "js/plugins/Cheat_Menu.js",\n'
+            main_js += "];\n"
+        files = {
+            prefix + "js/main.js": main_js.encode(),
+            "game_en.exe": b"original exe\x00\xff",
+            "nested/GAME_EN.EXE": b"nested original exe",
+            prefix + "data/English.json": b'{"text":"Keep English assets"}',
+            prefix + "save/file1.rmmzsave": b"valuable save",
+        }
+        if injected:
+            for name in ("Cheat_Menu.js", "Cheat_Menu.css"):
+                files[prefix + "js/plugins/" + name] = b"existing user asset: " + name.encode()
+        for name, data in files.items():
+            path = self.game / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        core = self.game / prefix / "js" / ("rpg_core.js" if engine == "MV" else "rmmz_core.js")
+        core.write_text("Bitmap.prototype.getPixel = function(x, y) {\n    return '#ffffff';\n};\n")
+        Path(self.app.SETTINGS_FILE).write_text(json.dumps({
+            "extract_game_en": legacy_enabled, "add_cheat_menu": legacy_enabled,
+            "last_selected_folder": str(self.game), "patch_getpixel": True,
+        }))
+        type(self.app).load_settings(self.app)
+        spies = []
+        for name in ("check_and_unpack_game_en", "add_cheat_menu", "remove_cheat_menu"):
+            spy = Mock(name=name, return_value=True)
+            setattr(self.app, name, spy)
+            spies.append(spy)
+        return files, core, spies
 
-        def unpack(source, target, *_):
-            staging.append(Path(target))
-            Path(target).mkdir(exist_ok=True)
-            (Path(target) / "translation.txt").write_text("translated")
+    def test_start_ignores_removed_features_and_preserves_existing_game_assets(self):
+        for engine in ("MV", "MZ"):
+            for injected in (False, True):
+                for enabled in (False, True):
+                    with self.subTest(engine=engine, injected=injected, legacy_enabled=enabled):
+                        files, core, spies = self.game_fixture(engine, injected, enabled)
+                        self.app.patch_rpgm_getpixel = type(self.app).patch_rpgm_getpixel.__get__(self.app)
+                        self.app.launch_nwjs_game = Mock()
+                        type(self.app).start_game(self.app)
+                        self.app.launch_nwjs_game.assert_called_once_with(str(self.game))
+                        for spy in spies:
+                            spy.assert_not_called()
+                        for name, data in files.items():
+                            self.assertEqual((self.game / name).read_bytes(), data, name)
+                        self.assertEqual(json.loads((self.game / "package.json").read_text())["name"], "tempname")
+                        self.assertIn("RPGM-Launcher getPixel finite patch begin", core.read_text())
+                        if not injected:
+                            self.assertFalse(list(self.game.rglob("Cheat_Menu.*")))
 
-        self.env["unpack_files"].side_effect = unpack
-        self.app.check_and_unpack_game_en(str(self.game))
-        self.assertEqual(exe.read_text(), "original exe")
-        self.assertEqual((existing / "user-save").read_text(), "keep")
-        self.assertNotEqual(staging[0], existing)
-        self.assertFalse(staging[0].exists())
-        self.assertEqual((self.game / "translation.txt").read_text(), "translated")
-        self.env["QMessageBox"].question.assert_called_once()
-
-    def test_extracted_payload_cannot_replace_original_exe(self):
-        exe = self.game / "nested/game_en.exe"
-        exe.parent.mkdir()
-        exe.write_text("original")
-
-        def unpack(source, target, *_):
-            payload = Path(target) / "nested/game_en.exe"
-            payload.parent.mkdir()
-            payload.write_text("replacement")
-
-        self.env["unpack_files"].side_effect = unpack
-        self.app.check_and_unpack_game_en(str(self.game))
-        self.assertEqual(exe.read_text(), "original")
-
-    def test_extraction_failure_cleans_staging_but_does_not_promise_asset_rollback(self):
-        exe = self.game / "game_en.exe"
-        exe.write_text("original")
-        staging = []
-
-        def fail(source, target, *_):
-            staging.append(Path(target))
-            Path(target).mkdir(exist_ok=True)
-            raise RuntimeError("unpack failed")
-
-        self.env["unpack_files"].side_effect = fail
-        with self.assertRaises(RuntimeError):
-            self.app.check_and_unpack_game_en(str(self.game))
-        self.assertEqual(exe.read_text(), "original")
-        self.assertFalse(staging[0].exists())
-
-    def test_extraction_cancel_does_not_unpack(self):
-        (self.game / "game_en.exe").write_text("original")
-        self.env["QMessageBox"].question.return_value = self.env["QMessageBox"].No
-        self.assertFalse(self.app.check_and_unpack_game_en(str(self.game)))
-        self.env["unpack_files"].assert_not_called()
+    def test_export_copies_existing_assets_without_cheats_or_extraction(self):
+        runtime = self.root / "Library/Application Support/RPGM-Launcher/v1/nwjs.app"
+        (runtime / "Contents/Resources").mkdir(parents=True)
+        binary = runtime / "Contents/MacOS/nwjs"
+        binary.parent.mkdir()
+        binary.write_bytes(b"fake NW.js runtime")
+        binary.chmod(0o700)
+        destination = self.root / "export"
+        destination.mkdir()
+        self.env["QFileDialog"].getExistingDirectory.return_value = str(destination)
+        for engine in ("MV", "MZ"):
+            for injected in (False, True):
+                with self.subTest(engine=engine, injected=injected):
+                    _, _, spies = self.game_fixture(engine, injected, True)
+                    before = {p.relative_to(self.game): p.read_bytes() for p in self.game.rglob("*") if p.is_file()}
+                    app_name = self.game.name
+                    self.app.get_app_name = Mock(return_value=(app_name, True))
+                    type(self.app).export_standalone_app(self.app)
+                    self.env["QMessageBox"].critical.assert_not_called()
+                    for spy in spies:
+                        spy.assert_not_called()
+                    self.assertEqual({p.relative_to(self.game): p.read_bytes() for p in self.game.rglob("*") if p.is_file()}, before)
+                    bundle = destination / (app_name + ".app")
+                    exported = bundle / "Contents/Resources/app.nw"
+                    self.assertEqual((bundle / "Contents/MacOS/nwjs").read_bytes(), binary.read_bytes())
+                    for name, data in before.items():
+                        if name != Path("package.json"):
+                            self.assertEqual((exported / name).read_bytes(), data, str(name))
+                    self.assertEqual(json.loads((exported / "package.json").read_text())["name"], "tempname")
+                    self.assertTrue((exported / "bg.js").is_file())
+                    if not injected:
+                        self.assertFalse(list(exported.rglob("Cheat_Menu.*")))
 
 
 if __name__ == "__main__":

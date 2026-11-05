@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import time
@@ -11,7 +12,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QAbstractButton, QDialog, QMessageBox, QPlainTextEdit
 
 from nwjs_installer import HelperProcess, helper_path, installation_lock, installed_versions
 import main
@@ -223,6 +224,52 @@ class WindowTests(HelperFixture):
             p.stop()
         self.home.stop()
         super().tearDown()
+
+    def test_legacy_feature_settings_are_ignored_and_not_saved(self):
+        settings = {
+            "extract_game_en": True, "add_cheat_menu": True,
+            "optimize_space": False, "disable_protection": True, "patch_getpixel": False,
+            "last_selected_version": "v1.2.3", "last_selected_folder": str(self.root / "game"),
+            "launcher_version": main.current_version, "last_commit_sha": "keep-sha", "last_build_number": 42,
+        }
+        path = Path(self.window.SETTINGS_FILE)
+        path.write_text(json.dumps(settings))
+        original = path.read_bytes()
+        self.window.version_selector.addItem("v1.2.3")
+        with patch.multiple(main, config_version="", last_commit_sha="", last_build_number=0):
+            main.RPGMLauncher.load_settings(self.window)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertEqual(self.window.last_selected_folder, settings["last_selected_folder"])
+            self.assertTrue(self.window.disable_protection_checkbox.isChecked())
+            self.assertFalse(self.window.getpixel_patch_checkbox.isChecked())
+            main.RPGMLauncher.save_settings(self.window)
+        expected = {key: value for key, value in settings.items() if key not in ("extract_game_en", "add_cheat_menu")}
+        self.assertEqual(json.loads(path.read_text()), expected)
+        self.assertFalse(hasattr(self.window, "extract_checkbox"))
+        self.assertFalse(hasattr(self.window, "cheat_menu_checkbox"))
+
+    def test_removed_features_have_no_ui_or_callable_entry_points(self):
+        texts = [button.text() for button in self.window.findChildren(QAbstractButton)]
+        with patch.object(QDialog, "exec", return_value=QDialog.Accepted):
+            self.window.show_instructions()
+            self.window.show_credits()
+        texts += [field.toPlainText() for field in self.window.findChildren(QPlainTextEdit)]
+        for text in texts:
+            with self.subTest(text=text):
+                self.assertNotRegex(text.lower(), r"cheat|game_en\.exe|save editor|saveeditor")
+        for name in ("extract_checkbox", "cheat_menu_checkbox", "open_save_editor_button",
+                     "check_and_unpack_game_en", "open_save_editor", "add_cheat_menu",
+                     "copy_cheat_files", "remove_cheat_menu", "remove_cheat_files",
+                     "modify_MV_main_js", "modify_MZ_main_js", "unmodify_MV_main_js", "unmodify_MZ_main_js"):
+            with self.subTest(attribute=name):
+                self.assertFalse(hasattr(self.window, name))
+
+    def test_launcher_imports_without_evbunpack(self):
+        result = subprocess.run(
+            [sys.executable, "-c", "import sys; sys.modules['evbunpack'] = None; import main"],
+            cwd=Path(main.__file__).parent, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def install_script(self, end="success", arches=None):
         arches = arches or ["arm64", "x64"]

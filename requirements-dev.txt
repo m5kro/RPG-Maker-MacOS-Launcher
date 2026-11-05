@@ -3,5 +3,4 @@
 PySide6-Essentials==6.12.0
 requests==2.34.2
 chardet==5.2.0
-evbunpack==0.2.6
 PyInstaller==6.22.3
