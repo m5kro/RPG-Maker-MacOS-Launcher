@@ -1,0 +1,7 @@
+# Python 3.11; unittest and QtTest need no separate test framework.
+# Qt 6.12 wheels require macOS 14+. Use a separately tested older Qt for older macOS.
+PySide6-Essentials==6.12.0
+requests==2.34.2
+chardet==5.2.0
+evbunpack==0.2.6
+PyInstaller==6.22.3

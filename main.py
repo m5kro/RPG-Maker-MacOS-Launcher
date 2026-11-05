@@ -5,6 +5,7 @@ import subprocess
 import requests
 import zipfile
 import shutil
+import tempfile
 import platform
 import chardet
 import logging
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import QTimer, QDateTime, Qt
+from nwjs_installer import HelperProcess, installed_versions, installation_lock, LOCK_NAME
 
 current_version = "3.3.4"
 config_version = ""
@@ -127,6 +129,12 @@ class RPGMLauncher(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self._nwjs_busy = False
+        self._nwjs_closing = False
+        self.nwjs_process = HelperProcess(parent=self)
+        self.nwjs_process.done.connect(self._nwjs_done)
+        self.nwjs_process.progress.connect(self._nwjs_progress)
+
         self.setWindowTitle("RPG Maker Launcher")
         self.resize(400, 200)
 
@@ -151,13 +159,14 @@ class RPGMLauncher(QMainWindow):
         version_layout.addWidget(self.version_selector)
         self.layout.addLayout(version_layout)
 
-        self.extract_checkbox = QCheckBox("Extract game_en.exe", self)
+        self.extract_checkbox = QCheckBox("Extract game_en.exe (overwrites game files; back up first)", self)
         self.layout.addWidget(self.extract_checkbox)
 
         self.cheat_menu_checkbox = QCheckBox("Add Cheat Menu (Press [1] key to open)", self)
         self.layout.addWidget(self.cheat_menu_checkbox)
 
-        self.optimize_space_checkbox = QCheckBox("Optimize Space", self)
+        self.optimize_space_checkbox = QCheckBox("Optimize Space (Unavailable: original files are protected)", self)
+        self.optimize_space_checkbox.setEnabled(False)
         self.layout.addWidget(self.optimize_space_checkbox)
 
         self.disable_protection_checkbox = QCheckBox("Disable Protection (Not Recommended)", self)
@@ -211,10 +220,6 @@ class RPGMLauncher(QMainWindow):
 
         self.update_version_selector()
         self.load_settings()
-        if current_version != config_version:
-            logging.info(f"Launcher version changed from {config_version} to {current_version}")
-            logging.info("Removing old configurations...")
-            self.remove_configs()
         self.update_select_button_state()
         self.check_start_game_button()
 
@@ -226,9 +231,9 @@ class RPGMLauncher(QMainWindow):
             "1. Click 'Install NWJS Version' to download and install the required version of NWJS.\n\n"
             "2. Click 'Select Game Folder' to choose the folder containing the RPG Maker game.\n\n"
             "3. Optional Options:\n"
-            "   - 'Extract game_en.exe': Extracts the file and patches the game with the English version.\n"
+            "   - 'Extract game_en.exe': Overwrites game files with the English version. Back up first; partial changes cannot be rolled back. Leave OFF for safe test-game checks.\n"
             "   - 'Add Cheat Menu': Patch the game with a cheat menu (Press [1] key while in game).\n"
-            "   - 'Optimize Space': Optimize the game folder size by removing the Windows version of NWJS.\n"
+            "   - 'Optimize Space': Unavailable to protect original game files.\n"
             "   - 'Disable Protection': Allows child_process to be used and allows outbound connections.\n"
             "   - 'Patch Bitmap.getPixel': Fixes crashes related to NaN/Infinity in Bitmap.getPixel.\n\n"
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
@@ -296,7 +301,7 @@ class RPGMLauncher(QMainWindow):
                     settings = json.load(file)
                     self.extract_checkbox.setChecked(settings.get('extract_game_en', False))
                     self.cheat_menu_checkbox.setChecked(settings.get('add_cheat_menu', False))
-                    self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
+                    self.optimize_space_checkbox.setChecked(False)
                     self.disable_protection_checkbox.setChecked(settings.get('disable_protection', False))
                     self.getpixel_patch_checkbox.setChecked(settings.get('patch_getpixel', True))
                     last_version = settings.get('last_selected_version')
@@ -638,12 +643,17 @@ class RPGMLauncher(QMainWindow):
                     widget.setPlainText(json.dumps(default_value, indent=4))
 
     def closeEvent(self, event):
+        if self._nwjs_busy:
+            event.ignore()
+            self._nwjs_closing = True
+            self._cancel_nwjs()
+            return
         self.save_settings()
         super().closeEvent(event)
 
     def check_nwjs_installed(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        return os.path.exists(applications_dir) and any(os.path.isdir(os.path.join(applications_dir, v)) for v in os.listdir(applications_dir))
+        return bool(installed_versions(applications_dir))
 
     def check_mkxpz_installed(self, warn=True):
         mkxpz_path = os.path.expanduser("~/Library/Application Support/RPGM-Launcher/Z-universal.app")
@@ -765,15 +775,12 @@ class RPGMLauncher(QMainWindow):
     # NWJS version selector
     def update_version_selector(self):
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        if os.path.exists(applications_dir):
-            versions = [
-                v for v in os.listdir(applications_dir) 
-                if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")
-            ]
-            versions.sort(key=lambda x: list(map(int, re.findall(r'\d+', x))), reverse=True)
-
-            self.version_selector.clear()
-            self.version_selector.addItems(versions)
+        selected = self.version_selector.currentText()
+        versions = installed_versions(applications_dir)
+        self.version_selector.clear()
+        self.version_selector.addItems(versions)
+        if selected in versions:
+            self.version_selector.setCurrentText(selected)
         self.update_select_button_state()
 
     def update_select_button_state(self):
@@ -827,61 +834,47 @@ class RPGMLauncher(QMainWindow):
             self.start_game_button.setEnabled(False)
             self.export_button.setEnabled(False)
 
-    # Some MV and MZ games don't include a name inside package.json, so we patch it with a temporary name
-    # This is a requirement for newer versions of NWJS to launch the game
     def check_package_json(self, folder_path):
-        file_path = os.path.join(folder_path, 'package.json')
-        if os.path.exists(file_path):
-            with open(file_path, 'rb') as file:
-                raw_data = file.read()
-                result = chardet.detect(raw_data)
-                encoding = result['encoding']
+        # Selecting/detecting a game must not modify it or its NWJS profile.
+        return os.path.isfile(os.path.join(folder_path, 'package.json'))
 
-            with open(file_path, 'r', encoding=encoding) as file:
-                data = json.load(file)
-
-            if 'name' in data and data['name'].strip() == '':
+    def prepare_package_json(self, folder_path):
+        """Repair launch metadata only when launching or preparing an exported copy."""
+        file_path = Path(folder_path) / 'package.json'
+        try:
+            raw_data = file_path.read_bytes()
+            encoding = chardet.detect(raw_data)['encoding'] or 'utf-8'
+            data = json.loads(raw_data.decode(encoding))
+            if not isinstance(data, dict):
+                raise ValueError("package.json must contain an object")
+            original = data.copy()
+            name = data.get('name', '')
+            if not isinstance(name, str):
+                raise ValueError("package.json name must be a string")
+            if not name.strip():
                 data['name'] = 'tempname'
-                logging.info("Updating package.json with temporary name 'tempname'.")
-                # Clear the tempname folder in ~/Library/Application Support/ so popup about version mismatch doesn't appear
-                logging.info("Clearing tempname folder in Application Support.")
-                tempname_folder = os.path.expanduser(f"~/Library/Application Support/tempname")
-                if os.path.exists(tempname_folder):
-                    try:
-                        shutil.rmtree(tempname_folder, ignore_errors=True)
-                        logging.info("tempname folder cleared successfully.")
-                    except Exception as e:
-                        logging.error(f"Error clearing tempname folder: {e}")
-            elif 'name' in data and data['name'].strip() != '':
-                logging.info(f"package.json already has a valid name: {data['name']}")
-                # Clear the possible named folder in ~/Library/Application Support/ so popup about version mismatch doesn't appear
-                name_folder = os.path.expanduser(f"~/Library/Application Support/{data['name']}")
-                if os.path.exists(name_folder):
-                    try:
-                        shutil.rmtree(name_folder, ignore_errors=True)
-                        logging.info(f"{data['name']} folder cleared successfully.")
-                    except Exception as e:
-                        logging.error(f"Error clearing {data['name']} folder: {e}")
 
-            # Add "bg-script": "bg.js" if protection is enabled
-            if not self.disable_protection_checkbox.isChecked():
-                data['bg-script'] = "bg.js"
-                logging.info("Protection enabled, adding bg-script entry to package.json.")
-            else: 
-                # If protection is disabled remove the bg-script entry
-                try:
-                    data.pop('bg-script', None)
-                    logging.info("Protection disabled, removing bg-script entry from package.json.")
-                except Exception as e:
-                    logging.info("Protection already disabled, bg-script entry not found.")
+            bg_path = Path(folder_path) / 'bg.js'
+            known_bg = (data.get('bg-script') == 'bg.js' and bg_path.is_file()
+                        and not bg_path.is_symlink()
+                        and bg_path.read_bytes() == (Path(__file__).parent / 'bg.js').read_bytes())
+            if self.disable_protection_checkbox.isChecked():
+                if known_bg:
+                    data.pop('bg-script')
+            elif 'bg-script' not in data or known_bg:
+                self.add_protection_script(folder_path)
+                data['bg-script'] = 'bg.js'
+            else:
+                QMessageBox.warning(self, "Protection not applied",
+                                    "The game's existing bg-script was preserved. Launcher protection was not applied.")
 
-            with open(file_path, 'w', encoding=encoding) as file:
-                json.dump(data, file, indent=4)
-
-            logging.info("JSON file updated successfully.")
+            if data != original:
+                with open(file_path, 'w', encoding=encoding) as file:
+                    json.dump(data, file, indent=4)
             return True
-        else:
-            logging.error("File does not exist.")
+        except (OSError, ValueError) as e:
+            logging.error("Failed to prepare package.json: %s", e)
+            QMessageBox.critical(self, "Error", f"Failed to prepare package.json: {e}")
             return False
 
     # Game.ini is a configuration file used by RPG Maker XP, VX, and VX Ace games
@@ -993,10 +986,26 @@ class RPGMLauncher(QMainWindow):
             if game_exe:
                 break
 
-        if game_exe:
-            extracted_dir = os.path.join(folder_path, "extracted")
-            unpack_files(game_exe, extracted_dir, False, False)
+        if not game_exe:
+            logging.error("game_en.exe not found in the directory")
+            return False
 
+        response = QMessageBox.question(
+            self, "Extraction overwrites game files",
+            "Extraction keeps the original EXE but overwrites other game files. "
+            "A failure can leave partial changes; there is no rollback. Back up the game first. "
+            "Leave extraction disabled for safe test-game checks. Continue?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if response != QMessageBox.Yes:
+            return False
+
+        # shortcut: copying extracted assets is not transactional; add rollback before claiming safe in-place patching.
+        with tempfile.TemporaryDirectory(prefix="rpgm-extract-") as extracted_dir:
+            unpack_files(game_exe, extracted_dir, False, False)
+            # Exclude a same-named payload so even nested original EXEs are retained.
+            extracted_exe = Path(extracted_dir) / os.path.relpath(game_exe, folder_path)
+            if os.path.lexists(extracted_exe):
+                extracted_exe.unlink()
             for item in os.listdir(extracted_dir):
                 s = os.path.join(extracted_dir, item)
                 d = os.path.join(folder_path, item)
@@ -1004,19 +1013,23 @@ class RPGMLauncher(QMainWindow):
                     shutil.copytree(s, d, dirs_exist_ok=True)
                 else:
                     shutil.copy2(s, d)
-
-            os.remove(game_exe)
-            shutil.rmtree(extracted_dir)
-            logging.info("game_en.exe extracted and original file removed.")
-        else:
-            logging.error("game_en.exe not found in the directory")
+        logging.info("game_en.exe extracted; original EXE retained.")
+        return True
 
     def add_protection_script(self, folder_path):
-        # Copy the protection scripts to the game folder
-        shutil.copy(os.path.join(os.path.dirname(__file__), 'bg.js'), folder_path)
-        shutil.copy(os.path.join(os.path.dirname(__file__), 'disable-child.js'), folder_path)
-        shutil.copy(os.path.join(os.path.dirname(__file__), 'disable-net.js'), folder_path)
-        logging.info("Protection scripts added to the game folder.")
+        scripts = ('bg.js', 'disable-child.js', 'disable-net.js')
+        # Preflight every collision before creating anything; never replace user scripts.
+        for name in scripts:
+            target = Path(folder_path) / name
+            source = Path(__file__).parent / name
+            if target.is_symlink() or (target.exists() and target.read_bytes() != source.read_bytes()):
+                raise ValueError(f"Refusing to overwrite existing protection script: {target}")
+        for name in scripts:
+            target = Path(folder_path) / name
+            if not target.exists():
+                with target.open('xb') as file:
+                    file.write((Path(__file__).parent / name).read_bytes())
+        logging.info("Protection scripts available in the game folder.")
 
     def patch_rpgm_getpixel(self, game_path, enable=True):
         # --- RPG Maker MV/MZ patch helpers ---
@@ -1177,46 +1190,29 @@ class RPGMLauncher(QMainWindow):
         return result
 
     def start_game(self):
+        if self._nwjs_busy:
+            return
         folder_path = self.last_selected_folder
         if not folder_path:
             logging.error("No folder selected.")
             QMessageBox.critical(self, "Error", "No folder selected.")
             return
         
-        # Giving ownership of the game folder to the current user to bypass permission issues because apple can't let us have nice things
-        logging.info("Setting you as owner of the game folder and permissions to 700 (You can read, write, execute).")
-        try:
-            subprocess.run(["chown", "-R", str(os.getuid()), folder_path], check=True)
-            logging.info("Changed ownership of the folder to the current user.")
-        except subprocess.CalledProcessError as e:
-            logging.error("Failed to change ownership of the folder: %s", str(e))
-            QMessageBox.critical(self, "Error", f"Failed to change ownership of the folder: {str(e)}")
-            return
-        try:
-            subprocess.run(["chmod", "-R", "700", folder_path], check=True)
-            logging.info("Changed permissions of the folder to 700.")
-        except subprocess.CalledProcessError as e:
-            logging.error("Failed to change permissions of the folder: %s", str(e))
-            QMessageBox.critical(self, "Error", f"Failed to change permissions of the folder: {str(e)}")
-            return
-
         if self.check_package_json(folder_path):
             logging.info("Launching game using NWJS.")
 
             if self.extract_checkbox.isChecked():
-                self.check_and_unpack_game_en(folder_path)
+                if not self.check_and_unpack_game_en(folder_path):
+                    return
 
-            if self.optimize_space_checkbox.isChecked():
-                self.optimize_space()
+            if not self.prepare_package_json(folder_path):
+                return
 
             if self.cheat_menu_checkbox.isChecked():
                 self.add_cheat_menu(folder_path)
             else:
                 self.remove_cheat_menu(folder_path)
             
-            if not self.disable_protection_checkbox.isChecked():
-                self.add_protection_script(folder_path)
-
             patch_res = self.patch_rpgm_getpixel(folder_path, enable=self.getpixel_patch_checkbox.isChecked())
             if not patch_res.get("ok"):
                 logging.warning("getPixel patch: %s", patch_res.get("message"))
@@ -1243,15 +1239,6 @@ class RPGMLauncher(QMainWindow):
             QMessageBox.critical(self, "Error", "No NWJS version selected.")
             return
         
-        logging.info("Cleaning up nwjs temporary files.")
-        temp_dir = os.path.expanduser("~/Library/Application Support/nwjs")
-        if os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                logging.info("Temporary NWJS files cleaned up successfully.")
-            except Exception as e:
-                logging.error(f"Error cleaning up NWJS temporary files: {e}")
-
         nwjs_dir = os.path.expanduser(f"~/Library/Application Support/RPGM-Launcher/{selected_version}")
         nwjs_path = os.path.join(nwjs_dir, "nwjs.app/Contents/MacOS/nwjs")
 
@@ -1411,6 +1398,8 @@ class RPGMLauncher(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
 
     def export_standalone_app(self):
+        if self._nwjs_busy:
+            return
         app_name, ok = self.get_app_name()
         if not ok:
             return
@@ -1442,13 +1431,11 @@ class RPGMLauncher(QMainWindow):
                 nwjs_app_dst = os.path.join(destination_folder, app_name + ".app")
 
                 if self.extract_checkbox.isChecked():
-                    self.check_and_unpack_game_en(self.last_selected_folder)
+                    if not self.check_and_unpack_game_en(self.last_selected_folder):
+                        return
 
                 if self.cheat_menu_checkbox.isChecked():
                     self.add_cheat_menu(self.last_selected_folder)
-
-                if self.optimize_space_checkbox.isChecked():
-                    self.optimize_space()
 
                 # Count files while skipping anything inside the destination .app
                 total_files = 0
@@ -1497,6 +1484,8 @@ class RPGMLauncher(QMainWindow):
                             return
 
                 progress_dialog.close()
+                if not self.prepare_package_json(app_nw_dir):
+                    return
                 QMessageBox.information(self, "Export Complete", "Standalone app exported successfully.")
                 logging.info("Standalone app exported successfully to %s", destination_folder)
 
@@ -1774,104 +1763,106 @@ class RPGMLauncher(QMainWindow):
         app_name = line_edit.text().strip() if line_edit.text().strip() else "Game Name"
         return app_name, result == QDialog.Accepted
 
-    # Install NWJS versions, multiple versions can be installed
+    # Only NW.js acquisition moves to Go; the rest of the launcher stays Python.
     def install_nwjs(self):
-        URL = "https://nwjs.io/versions.json"
-        BASE_DIR = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-
-        def download_and_install(version, arch, use_rosetta=False):
-            url = f"https://dl.nwjs.io/{version}/nwjs-sdk-{version}-osx-{arch}.zip"
-            tmp_file = "/tmp/nwjs.zip"
-
-            logging.info("Downloading and installing version %s for %s architecture...", version, arch)
-            response = requests.get(url, stream=True)
-            if response.status_code != 200:
-                logging.error("Failed to download version %s for %s.", version, arch)
-                return
-
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded_size = 0
-            chunk_size = 1024  # 1KB
-
-            progress_dialog = QProgressDialog("Downloading NWJS...", "Cancel", 0, total_size, self)
-            progress_dialog.setWindowModality(Qt.WindowModal)
-            progress_dialog.setMinimumDuration(0)
-            progress_dialog.show()
-
-            start_time = QDateTime.currentDateTime()
-            canceled = False
-
-            with open(tmp_file, "wb") as f:
-                for chunk in response.iter_content(chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        progress_dialog.setValue(downloaded_size)
-
-                        elapsed_time = start_time.msecsTo(QDateTime.currentDateTime()) / 1000
-
-                        if elapsed_time > 0:
-                            download_speed = downloaded_size / (1024 * 1024) / elapsed_time
-                        else:
-                            download_speed = 0
-
-                        progress_dialog.setLabelText(f"Downloaded: {downloaded_size / (1024 * 1024):.2f} MB of {total_size / (1024 * 1024):.2f} MB\n"
-                                                     f"Speed: {download_speed:.2f} MB/s")
-
-                        if progress_dialog.wasCanceled():
-                            canceled = True
-                            logging.info("Download canceled by user.")
-                            break
-
-            if canceled:
-                os.remove(tmp_file)
-                QMessageBox.information(self, "NWJS Installation", "NWJS Installation Canceled.")
-                return
-
-            subprocess.run(["unzip", "-q", tmp_file, "-d", "/tmp"])
-
-            target_dir = os.path.join(BASE_DIR, version)
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
-            
-            os.makedirs(target_dir, exist_ok=True)
-            shutil.move(f"/tmp/nwjs-sdk-{version}-osx-{arch}/nwjs.app", target_dir)
-            logging.info("Version %s installed successfully at %s", version, target_dir)
-
-            if use_rosetta:
-                with open(os.path.join(target_dir, "run-with-rosetta"), "w") as f:
-                    f.write("This file indicates NWJS should be run with Rosetta 2.")
-
-            os.remove(tmp_file)
-            shutil.rmtree(f"/tmp/nwjs-sdk-{version}-osx-{arch}")
-
-            progress_dialog.close()
-            QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
-
-        arch = "arm64" if platform.machine() == "arm64" else "x64"
-        logging.info("Querying available versions...")
-        response = requests.get(URL)
-        if response.status_code != 200:
-            logging.error("Failed to query NWJS versions.")
+        if self._nwjs_busy:
             return
+        self._nwjs_busy = True
+        self.central_widget.setEnabled(False)
+        self._nwjs_phase = 'versions'
+        self._nwjs_dialog = QProgressDialog("Fetching NW.js versions...", "Cancel", 0, 0, self)
+        self._nwjs_dialog.setAutoClose(False)
+        self._nwjs_dialog.setAutoReset(False)
+        self._nwjs_dialog.setMinimumDuration(0)
+        self._nwjs_dialog.canceled.connect(self._cancel_nwjs)
+        self._nwjs_dialog.show()
+        self.nwjs_process.start(['versions'], 'versions')
 
-        data = response.json()
-        versions = {v["version"]: v for v in data["versions"]}
-        
-        version, ok = self.show_version_selection_dialog(versions.keys())
-        if ok and version:
-            version_info = versions[version]
-            use_rosetta = False
-            if arch == "arm64" and "osx-arm64" not in version_info["files"]:
-                use_rosetta = self.show_rosetta_warning()
-                if not use_rosetta:
+    def _cancel_nwjs(self):
+        if not self._nwjs_busy:
+            return
+        if self.nwjs_process.running:
+            self._nwjs_dialog.setLabelText("Cancelling NW.js helper; waiting for cleanup...")
+            self.nwjs_process.cancel()
+        else:
+            self._finish_nwjs()
+
+    def _nwjs_progress(self, progress):
+        if not self._nwjs_busy:
+            return
+        completed, total = progress['completed'], progress['total']
+        self._nwjs_dialog.setLabelText(
+            f"NW.js {progress['phase']}: {completed / (1024 * 1024):.1f} MiB"
+            + (f" / {total / (1024 * 1024):.1f} MiB" if total else ""))
+        # Byte counts can exceed Qt's signed 32-bit progress range.
+        self._nwjs_dialog.setRange(0, 1000 if total else 0)
+        self._nwjs_dialog.setValue(min(1000, completed * 1000 // total) if total else 0)
+
+    def _nwjs_done(self, result, error, cancelled):
+        if cancelled or error:
+            self._finish_nwjs(error)
+            return
+        if self._nwjs_phase == 'versions':
+            self._nwjs_dialog.hide()
+            arch = 'arm64' if platform.machine() == 'arm64' else 'x64'
+            versions = {v['version']: v['arches'] for v in result['versions']
+                        if arch in v['arches'] or (arch == 'arm64' and 'x64' in v['arches'])}
+            if not versions:
+                self._finish_nwjs("No compatible NW.js releases were returned.")
+                return
+            version, ok = self.show_version_selection_dialog(versions.keys())
+            if not self._nwjs_busy:
+                return
+            if not ok or version not in versions:
+                self._finish_nwjs()
+                return
+            rosetta = arch == 'arm64' and 'arm64' not in versions[version]
+            if rosetta:
+                accepted = self.show_rosetta_warning()
+                if not self._nwjs_busy:
                     return
-                arch = "x64"
-            download_and_install(version, arch, use_rosetta)
-            self.save_settings()
+                if not accepted:
+                    self._finish_nwjs()
+                    return
+                arch = 'x64'
+            self._nwjs_version = version
+            self._nwjs_root = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
+            arguments = ['install', '--root', self._nwjs_root, '--version', version, '--arch', arch]
+            if rosetta:
+                arguments.append('--rosetta')
+            self._nwjs_phase = 'install'
+            self._nwjs_dialog.setLabelText("Installing NW.js...")
+            self._nwjs_dialog.show()
+            self.nwjs_process.start(arguments, 'complete')
+            return
+        expected = Path(self._nwjs_root).resolve() / self._nwjs_version / 'nwjs.app'
+        if (result['version'] != self._nwjs_version or Path(result['path']) != expected
+                or self._nwjs_version not in installed_versions(self._nwjs_root)):
+            self._finish_nwjs("NW.js helper returned an unexpected or incomplete installation.")
+            return
+        try:
             self.update_version_selector()
-            self.load_settings()
-            self.check_start_game_button()
+            self.version_selector.setCurrentText(self._nwjs_version)
+            self.save_settings()
+        except OSError as exc:
+            self._finish_nwjs(f"NW.js installed, but launcher settings could not be saved: {exc}")
+            return
+        self._finish_nwjs()
+        QMessageBox.information(self, "Install NWJS Version", "NWJS installation completed successfully.")
+
+    def _finish_nwjs(self, error=""):
+        self._nwjs_dialog.hide()
+        self._nwjs_dialog.deleteLater()
+        self._nwjs_busy = False
+        self.central_widget.setEnabled(True)
+        self.update_select_button_state()
+        self.check_start_game_button()
+        if error:
+            logging.error("NW.js helper: %s", error)
+            if not self._nwjs_closing:
+                QMessageBox.critical(self, "NW.js Installation", error)
+        if self._nwjs_closing:
+            QTimer.singleShot(0, self.close)
 
     # Install MKXP-Z, updates will be checked automatically
     def install_mkxpz(self):
@@ -2250,6 +2241,8 @@ class RPGMLauncher(QMainWindow):
         return result == QDialog.Accepted
     
     def uninstall_menu(self):
+        if self._nwjs_busy:
+            return
         logging.info("Uninstall menu opened.")
         dialog = QDialog(self)
         dialog.setWindowTitle("Uninstall Component")
@@ -2276,27 +2269,22 @@ class RPGMLauncher(QMainWindow):
                 self.uninstall_all()
 
     def uninstall_nwjs(self):
+        if self._nwjs_busy:
+            return
         applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        # Only keep the directories that are actually versions (starting with "v")
-
-        versions = [v for v in os.listdir(applications_dir) if os.path.isdir(os.path.join(applications_dir, v)) and v.startswith("v")]
-
+        versions = installed_versions(applications_dir)
         version, ok = self.show_version_selection_dialog(versions)
-        logging.info("Uninstalling NWJS version: %s", version)
-        if ok and version:
-            target_dir = os.path.join(applications_dir, version)
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
-                self.save_settings()
-                self.update_version_selector()
-                self.load_settings()
-                self.update_select_button_state()
-                self.check_start_game_button()
-                logging.info("NWJS version %s uninstalled successfully.", version)
-                QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
-            else:
-                logging.error("NWJS version %s not found.", version)
-                QMessageBox.critical(self, "Error", f"NWJS version {version} not found.")
+        if ok and version in versions:
+            try:
+                with installation_lock(applications_dir):
+                    shutil.rmtree(os.path.join(applications_dir, version))
+            except OSError as exc:
+                QMessageBox.critical(self, "Uninstall NWJS Version", f"Cannot uninstall (another installer may be running): {exc}")
+                return
+            self.update_version_selector()
+            self.save_settings()
+            self.check_start_game_button()
+            QMessageBox.information(self, "Uninstall NWJS Version", f"NWJS version {version} uninstalled successfully.")
     
     def uninstall_mkxpz(self):
         logging.info("Uninstalling MKXP-Z and associated files...")
@@ -2349,19 +2337,27 @@ class RPGMLauncher(QMainWindow):
             QMessageBox.critical(self, "Error", "EasyRPG Player not found.")
     
     def uninstall_all(self):
-        if not QMessageBox.question(self, "Uninstall All", "Are you sure you want to uninstall all components?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
-            logging.info("Uninstall all canceled by user.")
+        if self._nwjs_busy:
             return
-
-        logging.info("Uninstalling all components...")
-        applications_dir = os.path.expanduser("~/Library/Application Support/RPGM-Launcher")
-        if os.path.exists(applications_dir):
-            shutil.rmtree(applications_dir)
-            logging.info("All components uninstalled successfully.")
-            QMessageBox.information(self, "Uninstall All", "All components uninstalled successfully.")
-        else:
-            logging.error("RPGM-Launcher directory not found.")
-            QMessageBox.critical(self, "Error", "RPGM-Launcher directory not found.")
+        if not QMessageBox.question(self, "Uninstall All", "Are you sure you want to uninstall all components?", QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+            return
+        applications_dir = Path(os.path.expanduser("~/Library/Application Support/RPGM-Launcher"))
+        try:
+            with installation_lock(applications_dir):
+                # Keep root and lock inode: removing either would bypass other helpers' flock.
+                for path in applications_dir.iterdir():
+                    if path.name == LOCK_NAME:
+                        continue
+                    if path.is_dir() and not path.is_symlink():
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+        except OSError as exc:
+            QMessageBox.critical(self, "Uninstall All", f"Cannot uninstall (another installer may be running): {exc}")
+            return
+        self.update_version_selector()
+        self.check_start_game_button()
+        QMessageBox.information(self, "Uninstall All", "All components uninstalled successfully.")
 
     def open_save_editor(self):
         save_editor_url = "https://saveeditor.online/"
@@ -2605,36 +2601,8 @@ class RPGMLauncher(QMainWindow):
             logging.error("Failed to write main.js: %s", str(e))
             return False
 
-    # Optimize space by removing unnecessary files and folders that are only used by windows
-    # RPG MV and MZ games only
     def optimize_space(self):
-        files_to_remove = [
-            "credits.html", "d3dcompiler_47.dll", "ffmpeg.dll", "icudtl.dat", "libEGL.dll",
-            "libGLESv2.dll", "node.dll", "nw.dll", "nw_100_percent.pak", "nw_200_percent.pak",
-            "nw_elf.dll", "resources.pak", "v8_context_snapshot.bin", "vk_swiftshader.dll",
-            "vk_swiftshader_icd.json", "vulkan-1.dll"
-        ]
-        
-        folders_to_remove = ["locales", "swiftshader"]
-        
-        for root, dirs, files in os.walk(self.last_selected_folder):
-            for file in files:
-                file_path = os.path.join(root, file)
-                if file in files_to_remove or file.endswith(".exe"):
-                    try:
-                        os.remove(file_path)
-                        logging.info("Removed file: %s", file_path)
-                    except Exception as e:
-                        logging.error("Failed to remove file (already optimized?) %s: %s", file_path, str(e))
-            
-            for folder in dirs:
-                folder_path = os.path.join(root, folder)
-                if folder in folders_to_remove:
-                    try:
-                        shutil.rmtree(folder_path)
-                        logging.info("Removed folder: %s", folder_path)
-                    except Exception as e:
-                        logging.error("Failed to remove folder (already optimized?) %s: %s", folder_path, str(e))
+        logging.warning("Optimize Space is unavailable: original game files must be preserved.")
 
     def open_log(self):
         try:
