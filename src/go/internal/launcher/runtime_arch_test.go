@@ -1,7 +1,10 @@
 package launcher
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -19,28 +22,40 @@ func dataContractThin(cpu uint32, order binary.ByteOrder) []byte {
 	return b
 }
 func dataContractFat(order binary.ByteOrder, wide bool, cpus ...uint32) []byte {
+	slices := make([][]byte, len(cpus))
+	for i, cpu := range cpus {
+		slices[i] = dataContractThin(cpu, binary.LittleEndian)
+	}
+	return dataContractFatSlices(order, wide, slices...)
+}
+func dataContractFatSlices(order binary.ByteOrder, wide bool, slices ...[]byte) []byte {
 	size := 20
 	magic := uint32(0xcafebabe)
 	if wide {
 		size = 32
 		magic = 0xcafebabf
 	}
-	offset := 8 + size*len(cpus)
-	b := make([]byte, offset+32*len(cpus))
+	offset := 8 + size*len(slices)
+	b := make([]byte, offset)
 	order.PutUint32(b, magic)
-	order.PutUint32(b[4:], uint32(len(cpus)))
-	for i, cpu := range cpus {
+	order.PutUint32(b[4:], uint32(len(slices)))
+	for i, slice := range slices {
+		var thinOrder binary.ByteOrder = binary.LittleEndian
+		if slice[0] == 0xfe {
+			thinOrder = binary.BigEndian
+		}
 		e := b[8+i*size:]
-		order.PutUint32(e, cpu)
+		order.PutUint32(e, thinOrder.Uint32(slice[4:]))
+		order.PutUint32(e[4:], thinOrder.Uint32(slice[8:]))
 		if wide {
 			order.PutUint64(e[8:], uint64(offset))
-			order.PutUint64(e[16:], 32)
+			order.PutUint64(e[16:], uint64(len(slice)))
 		} else {
 			order.PutUint32(e[8:], uint32(offset))
-			order.PutUint32(e[12:], 32)
+			order.PutUint32(e[12:], uint32(len(slice)))
 		}
-		copy(b[offset:], dataContractThin(cpu, binary.LittleEndian))
-		offset += 32
+		b = append(b, slice...)
+		offset += len(slice)
 	}
 	return b
 }
@@ -133,6 +148,101 @@ func TestDataContractARMMalformed(t *testing.T) {
 		}
 	}
 }
+func TestDataContractARMValidatorUnification(t *testing.T) {
+	check := func(t *testing.T, b []byte, valid bool) {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "nwjs.app", "Contents", "MacOS", "nwjs")
+		dataContractExecutable(t, p, b)
+		for name, validate := range map[string]func(string) error{"RequireARM64": RequireARM64, "installer": validateMachO} {
+			t.Run(name, func(t *testing.T) {
+				if err := validate(p); (err == nil) != valid {
+					t.Errorf("valid=%v, error=%v", valid, err)
+				}
+			})
+		}
+		if err := validateBundle(context.Background(), filepath.Join(p, "../../..")); (err == nil) != valid {
+			t.Errorf("installer bundle: valid=%v, error=%v", valid, err)
+		}
+		if !bytes.Equal(dataContractRead(t, p), b) {
+			t.Fatal("validation changed executable")
+		}
+	}
+	for _, order := range []binary.ByteOrder{binary.BigEndian, binary.LittleEndian} {
+		t.Run(order.String(), func(t *testing.T) {
+			thin := dataContractThin(dataContractARM, order)
+			// LC_SEGMENT_64 with no sections is structurally valid, not an OS launchability fixture.
+			segment := append(bytes.Clone(thin), make([]byte, 72)...)
+			order.PutUint32(segment[16:], 1)
+			order.PutUint32(segment[20:], 72)
+			order.PutUint32(segment[32:], 0x19)
+			order.PutUint32(segment[36:], 72)
+			zeroSize := append(bytes.Clone(thin), make([]byte, 8)...)
+			order.PutUint32(zeroSize[16:], 1)
+			order.PutUint32(zeroSize[20:], 8)
+			order.PutUint32(zeroSize[32:], 1) // Exact review probe: LC_SEGMENT with cmdsize=0.
+			shortSegment := bytes.Clone(zeroSize)
+			order.PutUint32(shortSegment[36:], 8)
+			longCommand := bytes.Clone(zeroSize)
+			order.PutUint32(longCommand[36:], 16)
+			hugeCommands := bytes.Clone(thin)
+			order.PutUint32(hugeCommands[16:], ^uint32(0))
+			order.PutUint32(hugeCommands[20:], ^uint32(0))
+			hugeSize := bytes.Clone(thin)
+			order.PutUint32(hugeSize[20:], ^uint32(0))
+			for _, tc := range []struct {
+				name  string
+				data  []byte
+				valid bool
+			}{
+				{"header-only", thin, true},
+				{"segment", segment, true},
+				{"zero-command-size", zeroSize, false},
+				{"short-segment", shortSegment, false},
+				{"command-outside-sizeofcmds", longCommand, false},
+				{"huge-ncmds-sizeofcmds", hugeCommands, false},
+				{"huge-sizeofcmds", hugeSize, false},
+			} {
+				t.Run("thin/"+tc.name, func(t *testing.T) { check(t, tc.data, tc.valid) })
+				for _, wide := range []bool{false, true} {
+					t.Run(fmt.Sprintf("fat64=%v/%s", wide, tc.name), func(t *testing.T) {
+						check(t, dataContractFatSlices(order, wide, dataContractThin(dataContractIntel, order), tc.data), tc.valid)
+					})
+				}
+			}
+			for _, wide := range []bool{false, true} {
+				t.Run(fmt.Sprintf("fat64=%v", wide), func(t *testing.T) {
+					t.Run("declared-cpu-mismatch", func(t *testing.T) {
+						b := dataContractFatSlices(order, wide, dataContractThin(dataContractIntel, order))
+						order.PutUint32(b[8:], dataContractARM)
+						check(t, b, false)
+					})
+					t.Run("duplicate-architecture", func(t *testing.T) { check(t, dataContractFatSlices(order, wide, thin, thin), false) })
+					t.Run("malformed-non-arm-slice", func(t *testing.T) {
+						b := bytes.Clone(shortSegment)
+						order.PutUint32(b[4:], dataContractIntel)
+						check(t, dataContractFatSlices(order, wide, thin, b), false)
+					})
+					t.Run("32-bit-intel-slice", func(t *testing.T) {
+						b := dataContractThin(7, order)[:28]
+						order.PutUint32(b, 0xfeedface)
+						check(t, dataContractFatSlices(order, wide, b, thin), true)
+					})
+					t.Run("symtab-outside-slice", func(t *testing.T) {
+						b := append(bytes.Clone(thin), make([]byte, 24)...)
+						order.PutUint32(b[16:], 1)
+						order.PutUint32(b[20:], 24)
+						order.PutUint32(b[32:], 2) // LC_SYMTAB string bytes exist only in the next slice.
+						order.PutUint32(b[36:], 24)
+						order.PutUint32(b[48:], uint32(len(b)))
+						order.PutUint32(b[52:], 1)
+						check(t, dataContractFatSlices(order, wide, b, dataContractThin(dataContractIntel, order)), false)
+					})
+				})
+			}
+		})
+	}
+}
+
 func TestDataContractHostGateIsPure(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

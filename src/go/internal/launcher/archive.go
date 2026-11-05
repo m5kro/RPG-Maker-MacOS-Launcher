@@ -30,6 +30,10 @@ func archiveName(name, prefix string) (string, error) {
 }
 
 func extract(ctx context.Context, archive, dest, prefix string, progress ProgressFunc) error {
+	return extractZIP(ctx, archive, dest, prefix, progress, false)
+}
+
+func extractZIP(ctx context.Context, archive, dest, prefix string, progress ProgressFunc, componentMetadata bool) error {
 	z, err := zip.OpenReader(archive)
 	if err != nil {
 		return err
@@ -38,13 +42,17 @@ func extract(ctx context.Context, archive, dest, prefix string, progress Progres
 	if len(z.File) > maxEntries {
 		return errors.New("archive entry limit exceeded")
 	}
-	names := make(map[string]os.FileMode, len(z.File))
+	names := make(map[string]*zip.File, len(z.File))
 	var total int64
 	for _, f := range z.File {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		name, err := archiveName(f.Name, prefix)
+		root := prefix
+		if componentMetadata && strings.HasPrefix(f.Name, "__MACOSX/") {
+			root = "__MACOSX"
+		}
+		name, err := archiveName(f.Name, root)
 		if err != nil {
 			return err
 		}
@@ -67,12 +75,26 @@ func extract(ctx context.Context, archive, dest, prefix string, progress Progres
 			return errors.New("directory contains data")
 		}
 		total += int64(f.UncompressedSize64)
-		names[key] = mode
+		names[key] = f
 	}
-	for name := range names {
+	for name, f := range names {
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
-			if mode, exists := names[parent]; exists && !mode.IsDir() {
+			if ancestor, exists := names[parent]; exists && !ancestor.Mode().IsDir() {
 				return fmt.Errorf("archive writes through non-directory ancestor %q", parent)
+			}
+		}
+		if componentMetadata && strings.HasPrefix(f.Name, "__MACOSX/") {
+			base := path.Base(f.Name)
+			if !f.Mode().IsRegular() || !strings.HasPrefix(base, "._") {
+				return fmt.Errorf("unsupported component metadata %q", f.Name)
+			}
+			target := strings.TrimPrefix(path.Dir(f.Name)+"/"+strings.TrimPrefix(base, "._"), "__MACOSX/")
+			if _, err := archiveName(target, prefix); err != nil {
+				return err
+			}
+			body := names[strings.ToLower(target)]
+			if body == nil || strings.TrimSuffix(body.Name, "/") != target || (!body.Mode().IsRegular() && !body.Mode().IsDir()) {
+				return fmt.Errorf("component metadata has no matching file or directory: %q", f.Name)
 			}
 		}
 	}
@@ -86,6 +108,22 @@ func extract(ctx context.Context, archive, dest, prefix string, progress Progres
 	for _, f := range z.File {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if componentMetadata && strings.HasPrefix(f.Name, "__MACOSX/") {
+			r, err := f.Open()
+			if err != nil {
+				return err
+			}
+			// Even discarded metadata must be bounded, fully read and CRC checked.
+			b, readErr := readBounded(r, 64<<10)
+			if err := errors.Join(readErr, r.Close()); err != nil {
+				return err
+			}
+			if err := validateComponentAppleDouble(b); err != nil {
+				return fmt.Errorf("%s: %w", f.Name, err)
+			}
+			completed += int64(len(b))
+			continue
 		}
 		name, _ := archiveName(f.Name, prefix)
 		target := filepath.Join(dest, filepath.FromSlash(name))

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"debug/macho"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -218,56 +217,20 @@ func validateInstalled(ctx context.Context, target string, o installOptions) err
 		return err
 	}
 	p := filepath.Join(target, ".nwjs-install.json")
-	info, err := regularFile(p)
-	if err != nil {
+	if _, err := regularFile(p); err != nil {
 		return fmt.Errorf("cannot prove prior helper install: %w", err)
 	}
-	if info.Size() > 4096 {
-		return errors.New("invalid install receipt")
+	if filepath.Base(target) != o.version {
+		return errors.New("install target must match requested version")
 	}
-	b, err := os.ReadFile(p)
-	if err != nil {
+	if _, err := RequireNWArm(target); err != nil {
 		return err
-	}
-	var got receipt
-	if err := json.Unmarshal(b, &got); err != nil {
-		return err
-	}
-	if got != (receipt{o.version, "arm64", false}) {
-		return errors.New("install receipt must match this version and arm64 architecture with no Rosetta")
-	}
-	if _, err := os.Lstat(filepath.Join(target, "run-with-rosetta")); !os.IsNotExist(err) {
-		return errors.New("Rosetta marker present or unreadable; this helper cannot reuse it")
 	}
 	return validateBundle(ctx, filepath.Join(target, "nwjs.app"))
 }
 
 func validateMachO(exe string) error {
-	var arm64 bool
-	fat, err := macho.OpenFat(exe)
-	switch {
-	case err == nil:
-		defer fat.Close()
-		for _, slice := range fat.Arches {
-			if slice.Cpu == macho.CpuArm64 && slice.Type == macho.TypeExec {
-				arm64 = true
-				break
-			}
-		}
-	case errors.Is(err, macho.ErrNotFat):
-		f, err := macho.Open(exe)
-		if err != nil {
-			return fmt.Errorf("NW.js executable is not a supported Mach-O: %w", err)
-		}
-		defer f.Close()
-		arm64 = f.Cpu == macho.CpuArm64 && f.Type == macho.TypeExec
-	default:
-		return fmt.Errorf("NW.js executable is not a supported Mach-O: %w", err)
-	}
-	if !arm64 {
-		return errors.New("NW.js Mach-O must contain an arm64 executable")
-	}
-	return nil
+	return RequireARM64(exe)
 }
 
 func validateBundle(ctx context.Context, app string) error {

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RPG Maker Launcher</title>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<main>
+<h1>RPG Maker Launcher</h1>
+<p>macOS Apple Silicon 専用 · NW.js / MKXP-Z / EasyRPG</p>
+<details><summary>使い方</summary>
+<p>MV / MZ: NW.js の版を選び、ゲームフォルダを選択して起動します。導入済みの版はオフラインでも利用できます。「公開版を取得」はネットワークから ARM 対応版の一覧を取得します。</p>
+<p>XP / VX / VX Ace: Game.ini を含むフォルダを選びます。Downloads 外への移動を推奨します。2000 / 2003: RPG_RT ファイルを含むフォルダを選びます。必要な MKXP-Z / EasyRPG / RTP 等は内容を確認し、同意した場合のみダウンロードします。</p>
+<p>Standalone は元ゲームを保全し、コピーを別の .app に書き出します。既存の出力は上書きしません。Windows では元の EXE を直接使用してください。</p>
+<p>保護を無効にするとゲームの子プロセス起動・外部通信が許可されます。信頼できるゲームのみで使用してください。ゲーム・セーブのバックアップを推奨します。チート・英語版展開・Optimize は実行しません。</p>
+<p>ゲームはランチャー終了後も動作を続けます。実行中は同じ管理フォルダの起動・取得・書き出し・削除がロックされます。詳細設定は保存してから起動してください。</p>
+<p>動画（URL をコピーしてブラウザで開けます）: https://www.youtube.com/watch?v=NIRiKIjhXHk</p>
+</details>
+<details><summary>謝辞</summary><p>lecrolonk / athanadoc05 — 支援<br>mkxp-z maintainers — MKXP-Z<br>SynthFont developers — Soundfont<br>Orochimarufan — Kawariki Patches<br>EasyRPG Team — EasyRPG Player<br>xem/pgm — 動画<br>NW.js / Wails contributors</p></details>
+<section aria-labelledby="game-heading">
+<h2 id="game-heading">ゲーム</h2>
+<p id="folder">フォルダ未選択</p><p id="engine">エンジン未判定</p>
+<button id="pick-game" data-work>ゲームフォルダを選択…</button>
+<div class="row"><label for="version">NW.js の版</label><select id="version" data-work><option value="">版を選択</option></select><button id="versions" data-work>公開版を取得</button><button id="install-nw" data-work>選択した NW.js を導入</button></div>
+<label class="check"><input id="disable-protection" type="checkbox" data-work>保護を無効にする（非推奨）</label>
+<label class="check"><input id="patch-getpixel" type="checkbox" checked data-work>Bitmap.getPixel の NaN / Infinity 修正</label>
+<div class="row"><button id="launch" data-work>ゲームを起動</button><button id="export" data-work>Standalone .app を書き出す…</button></div>
+</section>
+<section aria-labelledby="components-heading">
+<h2 id="components-heading">コンポーネントと詳細設定</h2>
+<div class="row"><label for="component">対象</label><select id="component" data-work><option value="MKXPZ">MKXP-Z</option><option value="EasyRPG">EasyRPG</option><option value="RTP">RTP</option><option value="SoundFont">SoundFont</option><option value="Kawariki">Kawariki</option></select><button id="install-component" data-work>導入 / 再導入…</button><button id="update" data-work>更新を確認</button><button id="uninstall" data-work>対象を削除…</button><button id="uninstall-all" data-work>すべて削除…</button></div>
+<div class="row"><button id="mkxp-settings" data-work>MKXP-Z 詳細設定</button><button id="easy-settings" data-work>EasyRPG 詳細設定</button></div>
+</section>
+<section aria-label="処理状況">
+<p id="recovery" role="alert"></p>
+<p id="status" role="status" aria-live="polite" aria-atomic="true">読み込み中…</p>
+<progress id="progress" aria-label="処理の進捗" hidden></progress>
+<button id="cancel" disabled>処理をキャンセル</button><button id="quit">終了</button>
+</section>
+<details id="log-panel"><summary>ログを表示</summary><button id="refresh-log">ログを更新</button><pre id="log" tabindex="0" aria-label="ランチャーとゲームのログ（末尾のみ）"></pre></details>
+</main>
+<dialog id="advanced-dialog" aria-labelledby="advanced-title">
+<h2 id="advanced-title">詳細設定</h2><p>Force は必須です。配列・辞書・数値は正確な JSON として編集します。文字列はそのまま入力してください。Reset は保存するまで反映されません。</p>
+<form id="advanced-form"><div id="fields"></div><p id="advanced-message" role="status" aria-live="polite"></p><div class="dialog-actions"><button type="submit" data-work>保存</button><button type="button" id="reset-advanced" data-work>Reset（初期値）</button><button type="button" id="close-advanced">閉じる</button></div></form>
+</dialog>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title">確認</h2><p id="confirm-message"></p><form method="dialog"><button value="cancel" autofocus>戻る</button><button value="ok">実行する</button></form></dialog>
+<dialog id="export-dialog" aria-labelledby="export-title"><h2 id="export-title">Standalone .app の書き出し</h2><p>元ゲームは削除しません。出力先はゲーム・runtime フォルダの外を選んでください。</p><form id="export-form"><label for="app-name">アプリ名（.app は不要）</label><input id="app-name" required maxlength="120" data-work><p id="destination">出力先未選択</p><button id="pick-export" type="button" data-work>出力先フォルダを選択…</button><p id="export-message" role="status" aria-live="polite"></p><div class="dialog-actions"><button type="submit" data-work>コピーを書き出す</button><button id="close-export" type="button">戻る</button></div></form></dialog>
+</body>
+</html>

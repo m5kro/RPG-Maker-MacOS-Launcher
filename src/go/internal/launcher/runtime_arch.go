@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"debug/macho"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -73,10 +74,14 @@ func dataContractThinCPU(f *os.File, offset, size uint64) (uint32, error) {
 	if kind != 2 || commandSize > size-headerSize || uint64(commands) > commandSize/8 || (cpu == 0x0100000c && headerSize != 32) {
 		return 0, errors.New("invalid Mach-O executable header")
 	}
+	// Bound all parser reads to this slice, including load-command referenced tables.
+	if _, err := macho.NewFile(io.NewSectionReader(f, int64(offset), int64(size))); err != nil {
+		return 0, err
+	}
 	return cpu, nil
 }
 
-// IsARM64Executable validates headers, not signatures, dylibs or game compatibility.
+// IsARM64Executable validates Mach-O headers and load commands, not signatures, dylibs or game compatibility.
 // External universal executables are allowed; NW installation receipts are separate.
 func IsARM64Executable(path string) bool {
 	f, err := dataContractOpenRegular(path)
@@ -117,6 +122,7 @@ func IsARM64Executable(path string) bool {
 	}
 	type span struct{ start, end uint64 }
 	ranges := make([]span, 0)
+	arches := make(map[[2]uint32]bool)
 	found := false
 	for i := uint64(0); i < count; i++ {
 		var entry [32]byte
@@ -124,6 +130,11 @@ func IsARM64Executable(path string) bool {
 			return false
 		}
 		cpu := order.Uint32(entry[:])
+		arch := [2]uint32{cpu, order.Uint32(entry[4:])}
+		if arches[arch] {
+			return false
+		}
+		arches[arch] = true
 		offset := uint64(order.Uint32(entry[8:]))
 		size := uint64(order.Uint32(entry[12:]))
 		if entrySize == 32 {

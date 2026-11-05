@@ -1,0 +1,20 @@
+:root { color-scheme: light dark; font: 15px/1.6 system-ui, -apple-system, sans-serif; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+main { max-width: 1000px; margin: auto; padding: 22px; }
+h1 { font-size: 1.6rem; margin: 0; } h2 { font-size: 1.1rem; }
+section { border-top: 1px solid GrayText; margin-top: 18px; padding-top: 8px; }
+button, input, select, textarea { font: inherit; padding: 5px 9px; }
+button, summary { cursor: pointer; } button:disabled { cursor: default; }
+button { margin: 3px; } input[type=checkbox] { margin-right: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0; }
+.check { display: block; margin: 10px 0; }
+:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; padding: 12px; border: 1px solid GrayText; }
+p { overflow-wrap: anywhere; } #recovery { color: light-dark(#9b1b1b, #ffaaaa); }
+progress { width: 100%; } dialog { max-width: min(780px, 90vw); max-height: 85vh; overflow: auto; border: 1px solid GrayText; border-radius: 8px; padding: 20px; }
+dialog::backdrop { background: #0007; }
+fieldset { margin-bottom: 12px; border: 1px solid GrayText; }
+fieldset label { display: block; } fieldset input:not([type=checkbox]), fieldset textarea { box-sizing: border-box; width: 100%; }
+textarea { min-height: 90px; font-family: ui-monospace, monospace; }
+.dialog-actions { position: sticky; bottom: -20px; background: Canvas; padding: 10px 0; border-top: 1px solid GrayText; }
+#folder, #destination { font-weight: 600; }
