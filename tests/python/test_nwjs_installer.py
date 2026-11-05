@@ -180,7 +180,7 @@ class HelperTests(HelperFixture):
 
     def test_helper_path_never_falls_back_to_intel(self):
         with patch("platform.machine", return_value="x86_64"):
-            self.assertEqual(Path(helper_path()).parts[-3:], ("helpers", "arm64", "nwjs-helper"))
+            self.assertEqual(Path(helper_path()), Path(__file__).resolve().parents[2] / "build/helpers/arm64/nwjs-helper")
 
     def test_built_go_helper_respects_python_lock_without_network(self):
         executable = helper_path()
@@ -395,7 +395,7 @@ class WindowTests(HelperFixture):
         self.helper.unlink()
         self.window.install_nwjs()
         until(lambda: not self.window._nwjs_busy)
-        self.assertIn('scripts/build-nwjs-helper.sh', QMessageBox.critical.call_args.args[2])
+        self.assertIn('scripts/shell/build-nwjs-helper.sh', QMessageBox.critical.call_args.args[2])
         self.window.save_settings.assert_not_called()
 
     def test_cancel_button_during_versions_restores_controls_without_refresh(self):

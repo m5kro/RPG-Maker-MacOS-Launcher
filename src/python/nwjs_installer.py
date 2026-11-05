@@ -14,10 +14,9 @@ LOCK_NAME = ".nwjs-install.lock"
 
 
 def helper_path():
-    base = Path(__file__).resolve().parent
     if getattr(sys, "frozen", False):
-        return str(base / "nwjs-helper")
-    return str(base / "build" / "helpers" / "arm64" / "nwjs-helper")
+        return str(Path(sys._MEIPASS) / "nwjs-helper")
+    return str(Path(__file__).resolve().parents[2] / "build/helpers/arm64/nwjs-helper")
 
 
 def installed_versions(root):
@@ -174,7 +173,7 @@ class HelperProcess(QObject):
             return
         if error == QProcess.FailedToStart:
             self._error = (f"Cannot start NW.js helper: {self.executable}\n{self.process.errorString()}\n"
-                           "For source builds, run: sh scripts/build-nwjs-helper.sh\n"
+                           "For source builds, run: sh scripts/shell/build-nwjs-helper.sh\n"
                            "For packaged apps, reinstall a complete launcher build.")
             self._finish(None, self._error)
         elif not self._cancelled:

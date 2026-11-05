@@ -1,4 +1,4 @@
-<img src="icon.png" height="200" alt="RPG Maker Launcher icon">
+<img src="assets/icons/icon.png" height="200" alt="RPG Maker Launcher icon">
 
 # RPG-Maker-MacOS-Launcher
 
@@ -61,7 +61,7 @@ Go移行時の実機検証では、Apple Silicon上でGo helperからNW.js SDK 0
 
 このforkのソースを取得し、リポジトリのルートで以下を実行してください。[上流のビルド済みリリース](https://github.com/m5kro/RPG-Maker-MacOS-Launcher/releases/latest)は元プロジェクトの配布物であり、ここで説明しているGo移行を含むものではありません。
 
-ビルドに必要なのはApple Silicon Mac、native arm64 Python、[mise](https://mise.jdx.dev/getting-started.html)とXcode Command Line Tools（ビルド成果物の検査に`lipo`を使用）です。`mise.toml`でPython **3.11.18**とGo **1.27.3**を完全な版番号で固定しています（`go.mod`の最低要件は1.25のままです）。`requirements-dev.txt`で固定したQt 6.12のwheelは**macOS 14以上**を必要とします。古いmacOSでは別のQt・依存関係の組み合わせを検証する必要があります。Goはhelperのビルドに使い、完成したアプリにはhelperの実行ファイルを同梱します。
+ビルドに必要なのはApple Silicon Mac、native arm64 Python、[mise](https://mise.jdx.dev/getting-started.html)とXcode Command Line Tools（ビルド成果物の検査に`lipo`を使用）です。`mise.toml`でPython **3.11.18**とGo **1.27.3**を完全な版番号で固定しています（`src/go/go.mod`の最低要件は1.25のままです）。`src/python/requirements-dev.txt`で固定したQt 6.12のwheelは**macOS 14以上**を必要とします。古いmacOSでは別のQt・依存関係の組み合わせを検証する必要があります。Goはhelperのビルドに使い、完成したアプリにはhelperの実行ファイルを同梱します。
 
 以前の検証で使ったPython 3.11.2はmiseのmacOS arm64向け配布バイナリにないため、古い版をソースビルドする代わりに、`mise latest python@3.11`と配布バイナリ一覧で確認した3.11系の最新patch、3.11.18を採用しました。3.12以上には上げていません。miseの通常のTLS検証で取得したnative Pythonを使い、標準の`venv`でプロジェクト内の`.venv`を自動作成・選択します。手動のactivateやシステム全体へのpipインストールは不要です。別のPythonで作成済みの`.venv`は自動置換されないため、必要なら退避してから作り直してください。
 
@@ -73,7 +73,7 @@ mise run setup
 mise run test
 
 # NW.js helperだけを生成します（GUIアプリのビルドではありません）。
-# 既存のsh scripts/build-nwjs-helper.shを実行し、CGO_ENABLED=0で
+# sh scripts/shell/build-nwjs-helper.shを実行し、CGO_ENABLED=0で
 # arm64だけを生成・検査して、無視対象のbuild/に保存します。
 # 過去のx64/Universal2成果物は自動削除しませんが、利用しません。
 mise run build
@@ -86,6 +86,23 @@ MV・MZを試す場合は、画面の`Install NWJS Version`からゲームに合
 
 ソース実行時は常に`build/helpers/arm64/nwjs-helper`を使います。探索の基準はプロジェクトの`__file__`からの絶対パスで、`PATH`ではありません。helperがない、または実行できない場合は、ビルドコマンドを含むエラーになります。
 
+### ソースと配布ファイルの配置
+
+```text
+src/python/                  main.py・NW.js連携・ARM検査・requirements-dev.txt
+src/go/                      go.mod・cmd/nwjs-helper/（Goテストも同じ場所）
+src/javascript/              bg.js・disable-child.js・disable-net.js
+tests/python/                Pythonテスト・Mach-O fixture
+packaging/macos/arm64/        arm64.spec・EasyRPG-Standalone
+assets/icons/                PNG・ICNSアイコン
+scripts/python/              validate-mz-runtime.py・validate-nwjs-qt.py
+scripts/shell/               build-nwjs-helper.sh
+```
+
+言語別のソースとmacOS arm64向け配布素材を分離しています。GUIの入口は`src/python/main.py`で、`mise run run`から実行します。`mise`は`PYTHONPATH`を`src/python/`の絶対パスに設定し、テストは`tests/python/`を探索、Goコマンドは`go -C src/go ...`で実行します。ソース実行時のJS・Standalone・helperは起動時の作業ディレクトリに依存せず、ビルド済みアプリ内では`sys._MEIPASS`直下の同梱ファイルを使います。root shimや`go.work`は置きません。Windowsでは原本ゲームのEXEを直接実行するため、追加ランタイムやWindows向け配布階層は作りません。
+
+README・LICENSE・mise設定・`.gitignore`・`.github/`・`docs/`はルートのままです。無視対象の`build/`・`dist/`・`.venv/`と過去の検証証跡は移動・一括削除しません。
+
 ### テストとアプリ化
 
 Python/Qtの通常テストはネットワークや実ゲームを使わず、一時HOMEと偽helperで実行できます。`mise run test`は`build`に依存し、Pythonと実Go helperのロック連携テスト1件が未ビルドでスキップされるのを防ぎます。Goの`test`・`test -race`・`vet`とoffscreenのPythonテストを順に実行し、毎回のpipインストールは行いません。依存関係の導入は最初に`mise run setup`で済ませてください。実ゲームによる追加検証は別途[検証記録の手順](docs/validation/nwjs-go-migration.md#reproduce-safely)に従い、専用の作業場所と利用条件を確認したゲームコピーで行います。
@@ -95,14 +112,14 @@ mise run test
 
 # 配布はarm64のみ。native arm64 Python/Qtでビルドします。
 mise run build
-mise exec -- python -m PyInstaller --noconfirm RPG-Maker-Launcher-arm64.spec
+mise exec -- python -m PyInstaller --noconfirm packaging/macos/arm64/arm64.spec
 ```
 
-`RPG-Maker-Launcher-arm64.spec`は`build/helpers/arm64/nwjs-helper`を、データではなくバイナリとして同梱します。x64/Universal2用specは撤去しました。アプリ内では、同梱されたPythonリソースと同じ場所のhelperを使います。出力先は`dist/RPG-Maker-Launcher.app`です。`--noconfirm`での再ビルドは既存の`dist/`内の同名成果物を更新します。`build/`、`dist/`、`.venv/`はGitの追跡対象外で、実ゲーム素材、ランタイム、検証画像などの大きな検証物もリポジトリには追加しません。
+`packaging/macos/arm64/arm64.spec`は`build/helpers/arm64/nwjs-helper`を、データではなくバイナリとして同梱します。x64/Universal2用specは撤去しました。アプリ内では、同梱されたPythonリソースと同じ場所のhelperを使います。出力先は`dist/RPG-Maker-Launcher.app`です。`--noconfirm`での再ビルドは既存の`dist/`内の同名成果物を更新します。`build/`、`dist/`、`.venv/`はGitの追跡対象外で、実ゲーム素材、ランタイム、検証画像などの大きな検証物もリポジトリには追加しません。
 
 外部ランタイムのUniversalバイナリをARM側で使うことと、ランチャー自身のUniversal2配布は別です。ランチャーはarm64のみで、specにDeveloper ID署名は設定していません。PyInstallerがローカルで付けるad-hoc署名は、配布用署名や公証の代わりにはなりません。
 
-Go移行時のビルド・テスト環境は、macOS 26.5.1 arm64、Python 3.11.2、Go 1.27.3、PySide6-Essentials 6.12.0、PyInstaller 6.22.3でした。直接のPython依存関係は`requirements-dev.txt`に固定しています（chardet 5.2.0はpure Python）。当時の検証用venvは`/tmp/rpgm-qt-venv`で、現在の手順の`.venv`とは別の環境です。arm64・x64・Universal2のhelperと、**arm64の.appを実際にビルド**しました。同梱helperはQProcess経由で公式の320リリースを返し、同梱GUIも隔離HOMEのoffscreen起動を3秒間行ってtracebackがないことを確認しました。これは通常の画面操作や配布先での起動保証とは区別しています。
+Go移行時のビルド・テスト環境は、macOS 26.5.1 arm64、Python 3.11.2、Go 1.27.3、PySide6-Essentials 6.12.0、PyInstaller 6.22.3でした。直接のPython依存関係は`src/python/requirements-dev.txt`に固定しています（chardet 5.2.0はpure Python）。当時の検証用venvは`/tmp/rpgm-qt-venv`で、現在の手順の`.venv`とは別の環境です。arm64・x64・Universal2のhelperと、**arm64の.appを実際にビルド**しました。同梱helperはQProcess経由で公式の320リリースを返し、同梱GUIも隔離HOMEのoffscreen起動を3秒間行ってtracebackがないことを確認しました。これは通常の画面操作や配布先での起動保証とは区別しています。
 
 mise切替時には、同じmacOS 26.5.1 arm64上でmise 2026.10.19、native Python 3.11.18、Go 1.27.3とプロジェクトの`.venv`を使い、既存の固定依存関係で39件すべてのPythonテスト（skipなし）、Goの`test`・`test -race`・`vet`、`pip check`、arm64のPyInstallerビルドが成功しました。`run`タスクは構成だけを確認し、ランチャーGUIや生成した.appの起動、実ゲームの再試験は行っていません。上記のMZ検証結果や320リリースの取得、3秒間の起動確認はPython 3.11.2を使った当時の記録であり、この切替で再確認した結果ではありません。
 

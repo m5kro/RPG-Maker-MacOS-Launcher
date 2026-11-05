@@ -13,7 +13,8 @@ import sys
 import time
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src/python"))
 from runtime_arch import ensure_supported_host, require_arm64, require_nwjs_arm64
 
 ensure_supported_host()

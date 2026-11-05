@@ -1,8 +1,17 @@
 # Incremental Go migration: real MZ validation
 
+> 配置整理の現状注記：現在のソースは`src/python/`・`src/go/`・`src/javascript/`、Pythonテストは`tests/python/`、配布素材は`packaging/macos/arm64/`、検証スクリプトは`scripts/python/`、helperビルドは`scripts/shell/build-nwjs-helper.sh`です。以下の過去のパス・結果は当時の記録として維持し、末尾「Reproduce safely」だけ現行パスに更新しています。配置整理の証跡は`build/validation/layout/`に分離し、今回の限定再検証は次節に記録します。
+
 > ARM専用化の現状注記：ランチャー／Go helperはmacOS Apple Silicon arm64のみ対応します。NW.js一覧もarm64配布のある版のみで、旧`--arch`・`--rosetta`は拒否します。本文の320版・旧CLI・Rosetta同意・3アーキテクチャなどは過去の事実として残し、現在の再実行手順は末尾「Reproduce safely」に分けています。ARM専用化でこの実ゲーム試験を再実行したわけではありません。
 
 > 現状注記：この記録は機能撤去前の検証です。現在はチート用JS/CSSの注入・除去、`game_en.exe`からの英語版展開、外部セーブ編集サイトへの導線を撤去しています。以下のテスト件数・条件・結果は当時の履歴であり、撤去後の実ゲーム再試験を示すものではありません。通常のゲーム内セーブ・ロード試験の記録はそのまま残しています。
+
+## Layout acceptance (2026-11-05; independent review)
+
+- macOS 26.5.1 arm64 / Python 3.11.18 / Go 1.27.3: `mise tasks validate`, `mise run setup`, `pip check`, `mise run test` (**62 Python tests, no skips**), uncached Go `test` / `test -race` / `vet` passed. The 30 moves preserve all Go/JS/icon/dependency bytes; remaining code edits only resolve relocated paths. Other-CWD shell build/source imports, local documentation links, source/frozen resource tests and spec inputs passed.
+- From the repository root, `mise exec -- python -m PyInstaller --clean --noconfirm packaging/macos/arm64/arm64.spec` rebuilt canonical `dist/RPG-Maker-Launcher.app`. Bundled JS/Standalone/icon bytes match source; main/helper are arm64; local ad-hoc strict codesign passed. Source and frozen GUI each stayed alive offscreen for 3 seconds in separate fresh HOMEs without traceback; bundled helper no-op passed.
+- Reused the previously reviewed author fixture ZIP and helper-installed NW.js 0.94.1 in a **fresh copy**, with no game/runtime download. Current CLI no-op passed; relocated harness completed title → keyboard New Game → movement/event → menu Save → quit/relaunch → Continue/Load. All 9 screenshots and state JSON were inspected: map 1, (7,6), direction 8, switch 2=true restored. Original 1,332 fixture files and previous game/save/profile/runtime/HOME stayed unchanged; both runtime processes/debug ports closed. Real Qt/QProcess no-op also passed (65 arm64 releases, 40 timer ticks).
+- Local-only evidence: `build/validation/layout/independent-review/`; game proof: `mz-final/evidence/renderer-1793861038191683000/`. NW.js strict codesign still exits 1 (`code has no resources but signature indicates they must be present`); native stderr retains the known app.nw/macOS warnings. No runtime re-signing or OS protection changes. Audibility, other games, launcher Start Game/patch/export, Developer ID/notarization and Finder/Gatekeeper remain untested.
 
 ## ARM-only regression checks (current; separate from the historical game run)
 
@@ -118,7 +127,7 @@ Use a fresh ignored/temp directory, a logged-in macOS arm64 GUI session, availab
 mkdir -p build/validation
 R=$(mktemp -d "$PWD/build/validation/mz-real.XXXXXX")
 mkdir -p "$R/evidence" "$R/game"
-go build -o "$R/nwjs-helper" ./cmd/nwjs-helper
+mise exec -- go -C src/go build -o "$R/nwjs-helper" ./cmd/nwjs-helper
 # Stop on any failure; do not substitute a manually unzipped runtime.
 "$R/nwjs-helper" install --root "$R/runtime" --version v0.94.1 \
   >"$R/evidence/install.stdout" 2>"$R/evidence/install.stderr"
@@ -147,9 +156,9 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 # inspect signature failures without altering signatures/security settings.
 python3 -m venv "$R/venv"
 "$R/venv/bin/pip" install websocket-client==1.9.2
-"$R/venv/bin/python" scripts/validate-mz-runtime.py "$R" --reviewed-fixture
-# Use a local venv with requirements-dev.txt installed for this separate smoke:
-/path/to/qt-venv/bin/python scripts/validate-nwjs-qt.py "$R"
+"$R/venv/bin/python" scripts/python/validate-mz-runtime.py "$R" --reviewed-fixture
+# Use a local venv with src/python/requirements-dev.txt installed for this separate smoke:
+/path/to/qt-venv/bin/python scripts/python/validate-nwjs-qt.py "$R"
 ```
 
 The real harness uses assertions as its live self-check. Never run it with Python `-O`. Use a fresh fixture/save directory for repetitions; existing file-1 saves are refused rather than deleted. The Qt smoke refuses to reuse `qt-home`. Artifacts remain for inspection; neither script deletes user data. If GUI launch/permissions fail, retain logs and perform the same New Game → movement/event → Save → quit/relaunch → Continue sequence manually only after resolving the blocker without weakening OS security.

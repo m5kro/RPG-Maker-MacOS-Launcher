@@ -1,12 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
-import os
+from pathlib import Path
 
+ROOT = Path(SPECPATH).resolve().parents[2]
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[(os.path.join(SPECPATH, 'build/helpers/arm64/nwjs-helper'), '.')],
-    datas=[('EasyRPG-Standalone', '.'), ('bg.js', '.'), ('disable-child.js', '.'), ('disable-net.js', '.')],
+    [str(ROOT / 'src/python/main.py')],
+    pathex=[str(ROOT / 'src/python')],
+    binaries=[(str(ROOT / 'build/helpers/arm64/nwjs-helper'), '.')],
+    datas=[(str(ROOT / 'packaging/macos/arm64/EasyRPG-Standalone'), '.'),
+           (str(ROOT / 'src/javascript/bg.js'), '.'),
+           (str(ROOT / 'src/javascript/disable-child.js'), '.'),
+           (str(ROOT / 'src/javascript/disable-net.js'), '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -33,7 +37,7 @@ exe = EXE(
     target_arch='arm64',
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.icns'],
+    icon=[str(ROOT / 'assets/icons/icon.icns')],
 )
 coll = COLLECT(
     exe,
@@ -47,7 +51,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='RPG-Maker-Launcher.app',
-    icon='./icon.icns',
+    icon=str(ROOT / 'assets/icons/icon.icns'),
     bundle_identifier=None,
     version='3.3.4',
 )

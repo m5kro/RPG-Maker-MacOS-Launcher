@@ -17,7 +17,7 @@ from macho_fixture import executable, thin, X64
 from runtime_arch import VERSION, ensure_supported_host, require_arm64, require_nwjs_arm64
 
 
-SOURCE = Path(__file__).resolve().parents[1] / "main.py"
+SOURCE = Path(__file__).resolve().parents[2] / "src/python/main.py"
 METHODS = {
     "__init__", "load_settings", "select_folder", "check_package_json",
     "prepare_package_json", "add_protection_script", "start_game",
@@ -62,7 +62,8 @@ class SafetyTests(unittest.TestCase):
         process = Mock()
         process.Popen.side_effect = lambda *args, **kwargs: kwargs["stdout"].close()
         self.env = {
-            "__file__": str(self.assets / "main.py"), "os": os, "json": json,
+            "__file__": str(SOURCE), "os": os, "json": json,
+            "JS_DIR": self.assets, "EASYRPG_STANDALONE": self.assets / "EasyRPG-Standalone",
             "shutil": shutil, "re": re, "Path": Path,
             "logging": Mock(), "subprocess": process,
             "chardet": Mock(detect=Mock(return_value={"encoding": "utf-8"})),

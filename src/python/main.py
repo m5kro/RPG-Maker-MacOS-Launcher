@@ -27,6 +27,14 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDial
 from PySide6.QtCore import QTimer, QDateTime, Qt
 from nwjs_installer import HelperProcess, installed_versions, installation_lock, LOCK_NAME
 
+if getattr(sys, "frozen", False):
+    JS_DIR = Path(sys._MEIPASS)
+    EASYRPG_STANDALONE = Path(sys._MEIPASS) / "EasyRPG-Standalone"
+else:
+    SOURCE_ROOT = Path(__file__).resolve().parents[2]
+    JS_DIR = SOURCE_ROOT / "src/javascript"
+    EASYRPG_STANDALONE = SOURCE_ROOT / "packaging/macos/arm64/EasyRPG-Standalone"
+
 current_version = "3.3.4"
 config_version = ""
 latest_commit_sha = ""
@@ -868,7 +876,7 @@ class RPGMLauncher(QMainWindow):
             bg_path = Path(folder_path) / 'bg.js'
             known_bg = (data.get('bg-script') == 'bg.js' and bg_path.is_file()
                         and not bg_path.is_symlink()
-                        and bg_path.read_bytes() == (Path(__file__).parent / 'bg.js').read_bytes())
+                        and bg_path.read_bytes() == (JS_DIR / 'bg.js').read_bytes())
             if self.disable_protection_checkbox.isChecked():
                 if known_bg:
                     data.pop('bg-script')
@@ -989,14 +997,14 @@ class RPGMLauncher(QMainWindow):
         # Preflight every collision before creating anything; never replace user scripts.
         for name in scripts:
             target = Path(folder_path) / name
-            source = Path(__file__).parent / name
+            source = JS_DIR / name
             if target.is_symlink() or (target.exists() and target.read_bytes() != source.read_bytes()):
                 raise ValueError(f"Refusing to overwrite existing protection script: {target}")
         for name in scripts:
             target = Path(folder_path) / name
             if not target.exists():
                 with target.open('xb') as file:
-                    file.write((Path(__file__).parent / name).read_bytes())
+                    file.write((JS_DIR / name).read_bytes())
         logging.info("Protection scripts available in the game folder.")
 
     def patch_rpgm_getpixel(self, game_path, enable=True):
@@ -1645,7 +1653,7 @@ class RPGMLauncher(QMainWindow):
                 # Also apple why did you have to make this so awful. Why do I need to copy the entire app just to keep it executable?
                 progress_dialog.setLabelText("Copying support files...")
                 logging.info("Copying support files for EasyRPG standalone app...")
-                shutil.copy(os.path.join(os.path.dirname(__file__), 'EasyRPG-Standalone'), os.path.join(easyrpg_app_dst))
+                shutil.copy(EASYRPG_STANDALONE, os.path.join(easyrpg_app_dst))
                 shutil.copytree(easyrpg_app_src, os.path.join(easyrpg_app_dst, "EasyRPG Player.app"), dirs_exist_ok=True)
                 logging.info("Support files copied successfully. Moving executables...")
                 shutil.move(os.path.join(easyrpg_app_dst, "EasyRPG-Standalone"), os.path.join(easyrpg_app_dst, app_name))

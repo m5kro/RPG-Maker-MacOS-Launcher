@@ -80,8 +80,9 @@ class RuntimeArchTests(unittest.TestCase):
         log.write_text("keep log")
         settings = log.with_name("settings.json")
         settings.write_text("keep settings")
-        code = "import platform,runpy,sys; platform.machine=lambda:'x86_64'; sys.modules['PySide6']=None; runpy.run_path('main.py',run_name='__main__')"
-        result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1], env={**os.environ, "HOME": str(root)}, capture_output=True, text=True, timeout=15)
+        source = Path(__file__).resolve().parents[2] / "src/python"
+        code = f"import platform,runpy,sys; sys.path.insert(0,{str(source)!r}); platform.machine=lambda:'x86_64'; sys.modules['PySide6']=None; runpy.run_path({str(source / 'main.py')!r},run_name='__main__')"
+        result = subprocess.run([sys.executable, "-c", code], cwd=root, env={**os.environ, "HOME": str(root)}, capture_output=True, text=True, timeout=15)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("native", result.stderr)
         self.assertNotIn("ModuleNotFoundError", result.stderr)
