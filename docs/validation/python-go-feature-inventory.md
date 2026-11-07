@@ -1,5 +1,7 @@
 # Python d56d1df → Go 機能照合（暫定）
 
+> この文書は作成時点の比較記録であり、現在の互換性やテスト結果を示すものではありません。参照される `build/` 内の実験成果物は整理時に削除済みです。
+
 ## 範囲と数え方
 
 基準は `d56d1df` の `src/python/main.py`、`nwjs_installer.py`、`runtime_arch.py` と、同版に既に存在する Go NW.js helper。現行は作業ツリー（未コミット変更を含む）の `src/go/internal/launcher/`、`src/go/internal/ui/`、`src/webui/`。旧 UI の関数単位ではなく、利用者の目的別に下表の **28 単位**を定義した。各行は等重みであり、行の分け方を変えると値も変わる。

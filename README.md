@@ -89,7 +89,7 @@ mise exec -- go -C src/go run -tags production \
 ```sh
 # 既存のレビュー済みruntimeが必要。ROOTは未存在の物理絶対path。
 mise run smoke -- "$PWD/build/validation/my-gui-fresh" \
-  "$PWD/build/validation/mz-20260717/runtime/v0.94.1" --reviewed-runtime
+  /absolute/path/to/reviewed-runtime/v0.94.1 --reviewed-runtime
 # 実MZのコマンドとfixture利用条件は検証記録のReproduce safely参照。
 ```
 
@@ -97,13 +97,13 @@ smokeは新HOME/rootへruntimeをコピーして専用appをbuildし、実WebKit
 
 ## 確認結果と未検証範囲
 
-Go backend/GUI移行は旧Python 62テストの目的との独立比較を通過しました。default/production/smoke/combinedのGo test・race・vet、native WebKit 31チェック、JS例外／ready timeoutのexit 1、runtime更新rollbackや設定型保持を検査しています。実NW起動ではcaller終了後のゲーム継続・共有lock保持も確認しました。ローカル証跡は`build/validation/python-zero/final-parity-gate/`、最終tooling切替は`build/validation/python-zero/final-tooling/`です。
+Go backend/GUI移行は旧Python 62テストの目的との独立比較を通過しました。default/production/smoke/combinedのGo test・race・vet、native WebKit 31チェック、JS例外／ready timeoutのexit 1、runtime更新rollbackや設定型保持を検査しています。実NW起動ではcaller終了後のゲーム継続・共有lock保持も確認しました。これらは過去の確認結果で、ローカルの実験成果物は整理時に削除しています。
 
 公開MZデモ1本のCDPキーボードによるNew Game→移動→イベント→保存→プロセス終了→再起動→Continue/Loadを検査しました。これは人間の物理キー操作、全ゲーム互換性、GUIのゲーム選択からpatch/exportまでの一括検証ではありません。出典・1332ファイルのhash・画像・署名制約・Goでの再現手順は[検証記録](docs/validation/nwjs-go-migration.md)を参照してください。
 
 **未検証：** VoiceOver、IME、native folder dialogの実選択、物理window/Close/⌘Q操作、音声聴取、ほかの作品・プラグイン・長時間動作、MKXP-Z/EasyRPGの実gameplay、全standalone起動、macOS13.3実機、Developer ID署名・公証、Finder/Gatekeeper。hidden WebKitでの自動チェックはこれらの成功を意味しません。
 
-過去のPython/Qt結果は歴史として保持します。初期移行は39件（Python 3.11.2）、mise切替は39件（3.11.18）、ARM専用化は58件、配置整理・最終比較は62件が成功しました。当時のPyInstaller app、offscreen起動、320版一覧・旧3アーキテクチャ等は現在のGo版の対応保証ではありません。過去の`build/validation/`証跡やGit履歴は削除しません。プロジェクト専用venvの撤去はOSや他projectのPythonを削除する意味ではありません。
+過去のPython/Qt結果は歴史として保持します。初期移行は39件（Python 3.11.2）、mise切替は39件（3.11.18）、ARM専用化は58件、配置整理・最終比較は62件が成功しました。当時のPyInstaller app、offscreen起動、320版一覧・旧3アーキテクチャ等は現在のGo版の対応保証ではありません。実験ゲーム・ランタイムのコピー・ログ・測定結果と`build/`・`dist/`の生成物は削除済みです。Git履歴と製品・回帰／受け入れテストのソースは保持します。実機テストの再実行には、レビュー済みゲームとランタイムを別途準備してください。プロジェクト専用venvの撤去はOSや他projectのPythonを削除する意味ではありません。
 
 ## ライセンス・出典・謝辞
 

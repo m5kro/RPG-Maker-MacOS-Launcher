@@ -1,5 +1,7 @@
 # Incremental Go migration: real MZ validation
 
+> 保管状況：以下は過去の検証記録です。記載された `build/`・`dist/` 内の実験ゲーム、ランタイム、ログ、画像は整理時に削除済みで、現存する証跡へのリンクではありません。検証用ソースは維持していますが、再実行にはレビュー済みの入力を別途準備する必要があります。
+
 > 現在はGo backend + Wails/system WKWebView + plain webuiです。ソースは`src/go/`・`src/webui/`・`src/javascript/`、配布素材は`packaging/macos/arm64/`、build/smokeは`scripts/shell/`、MZ harnessは`src/go/cmd/validate-mz/`です。Python/Qtのソース・tests・scripts・specとproject venvは撤去済みで、現行miseはGo 1.27.3のみです。以下のPython結果・旧path・旧CLIは当時の履歴として維持し、末尾「Reproduce safely」を現在のGo手順に分けています。配置整理の歴史証跡は`build/validation/layout/`、Go移行gateは`build/validation/python-zero/final-parity-gate/`です。
 
 > ARM専用化の現状注記：ランチャー／Go helperはmacOS Apple Silicon arm64のみ対応します。NW.js一覧もarm64配布のある版のみで、旧`--arch`・`--rosetta`は拒否します。本文の320版・旧CLI・Rosetta同意・3アーキテクチャなどは過去の事実として残し、現在の再実行手順は末尾「Reproduce safely」に分けています。ARM専用化でこの実ゲーム試験を再実行したわけではありません。
