@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -284,14 +285,18 @@ func (m *Manager) prepareNW(folder string, s Settings) ([]string, error) {
 	return warnings, nil
 }
 func engineWriteJSON(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "    ")
-	if err != nil {
+	var b bytes.Buffer
+	encoder := json.NewEncoder(&b)
+	// These are JSON files, not HTML; MKXP needs literal fontSub delimiters.
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "    ")
+	if err := encoder.Encode(v); err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return dataContractAtomic(path, append(b, '\n'), 0600)
+	return dataContractAtomic(path, b.Bytes(), 0600)
 }
 func engineContext(ctx context.Context) error {
 	if ctx == nil {

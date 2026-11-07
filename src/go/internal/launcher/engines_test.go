@@ -117,6 +117,47 @@ func TestEngineContractInstalledNWLegacyDiscovery(t *testing.T) {
 		t.Fatal("receiptless reinstall accepted")
 	}
 }
+func TestEngineContractWriteJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config", "mkxp.json")
+	value := map[string]string{"text": "> < & 日本語 \"quoted\" \\path\nnext"}
+	if err := engineWriteJSON(path, value); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n" + `    "text": "> < & 日本語 \"quoted\" \\path\nnext"` + "\n}\n"
+	if string(b) != want {
+		t.Fatalf("JSON file = %q, want %q", b, want)
+	}
+	var decoded map[string]string
+	if err = json.Unmarshal(b, &decoded); err != nil || !reflect.DeepEqual(decoded, value) {
+		t.Fatalf("roundtrip: %#v, %v", decoded, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("file mode: %v, %v", info, err)
+	}
+	if err = os.Chmod(path, 0640); err != nil {
+		t.Fatal(err)
+	}
+	if err = engineWriteJSON(path, map[string]any{"invalid": make(chan int)}); err == nil {
+		t.Fatal("unsupported JSON value accepted")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, b) {
+		t.Fatalf("encoding failure changed existing file: %q, %v", after, err)
+	}
+	if err = engineWriteJSON(path, value); err != nil {
+		t.Fatal(err)
+	}
+	now, err := os.Stat(path)
+	if err != nil || now.Mode().Perm() != 0640 || os.SameFile(info, now) {
+		t.Fatalf("atomic replacement/mode: %v, %v", now, err)
+	}
+}
+
 func TestEngineContractMKXPConfigBOM(t *testing.T) {
 	m := engineContractManager(t)
 	g := engineContractGame(t, MKXPZ)

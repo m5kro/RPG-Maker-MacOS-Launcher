@@ -45,6 +45,11 @@ func TestEngineContractExportAllAndOriginals(t *testing.T) {
 			engineContractRuntime(t, m, engine)
 			if engine == MKXPZ {
 				engineContractInstallSupport(t, m)
+				a := DefaultAdvancedSettings()
+				a.MKXPZEnabled["fontSub"] = true
+				if err := SaveAdvancedSettings(m.Root, a); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if engine != MKXPZ {
 				engineContractWrite(t, filepath.Join(g.Path, ".rpgm-resources", "user.txt"), []byte("user asset"), 0600)
@@ -89,6 +94,9 @@ func TestEngineContractExportAllAndOriginals(t *testing.T) {
 				var c map[string]any
 				if err = json.Unmarshal(b, &c); err != nil {
 					t.Fatal(err)
+				}
+				if !bytes.Contains(b, []byte(`"Arial>Open Sans"`)) || !reflect.DeepEqual(c["fontSub"], DefaultAdvancedSettings().MKXPZ["fontSub"]) {
+					t.Fatalf("fontSub not preserved literally: %s", b)
 				}
 				if c["gameFolder"] != "./" {
 					t.Fatal(c)
