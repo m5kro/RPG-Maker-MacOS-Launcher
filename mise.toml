@@ -1,6 +1,10 @@
 [tools]
 go = "1.27.3"
 
+[env]
+MZ_BENCHMARK_GAME = "{{ env.MZ_BENCHMARK_GAME | default(value=config_root ~ '/build/validation/mz-20260717/game/rpgmaker-mz-demo-81abd876e3c339fbd7d74323ad8817ad7011cade') }}"
+MZ_BENCHMARK_RUNTIME = "{{ env.MZ_BENCHMARK_RUNTIME | default(value=config_root ~ '/build/validation/mz-20260717/runtime/v0.94.1/nwjs.app') }}"
+
 [tasks.setup]
 description = "Download and verify Go modules"
 run = ["go -C src/go mod download", "go -C src/go mod verify"]
@@ -29,6 +33,10 @@ run = '"{{config_root}}/dist/RPG-Maker-Launcher.app/Contents/MacOS/launcher"'
 [tasks.smoke]
 description = "Opt-in native GUI: ABS_NEW_ROOT ABS_RUNTIME/v0.94.1 --reviewed-runtime"
 run = "sh scripts/shell/smoke-launcher.sh"
+
+[tasks.benchmark]
+description = "Run the fixed MZ map benchmark (requires a local MZ game and NW.js)"
+run = 'sh scripts/shell/benchmark-mz.sh'
 
 [tasks.validate]
 description = "Opt-in real MZ: --root ABS_NEW --fixture-zip ABS --runtime ABS/v0.94.1 --reviewed-fixture"

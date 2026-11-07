@@ -3,7 +3,7 @@ import {Call, Events} from '/wails/runtime.js';
 const $ = id => document.getElementById(id);
 const call = (method, ...args) => Call.ByName(`rpgm-launcher/nwjs-helper/internal/ui.UI.${method}`, ...args);
 let preferences = {}, installed = [], remote = [], game = null;
-let state = {Busy: false}, pending = false, activeEngine = '', fields = [], destination = '';
+let state = {Busy: false}, pending = false, cancelled = false, activeEngine = '', fields = [], destination = '';
 const message = text => { $('status').textContent = text; };
 const fail = error => {
   const text = String(error?.message || error);
@@ -21,7 +21,7 @@ function controls() {
 }
 async function perform(work) {
   if (pending) return;
-  pending = true; controls();
+  pending = true; cancelled = false; controls();
   try { await work(); } catch (error) { fail(error); }
   finally { pending = false; controls(); }
 }
@@ -64,12 +64,21 @@ async function install(component) {
   await run({Action: 'install', Component: component, Approved: true});
   await refresh(/^v\d+\.\d+\.\d+$/.test(component) ? component : '');
 }
-async function readyGame() {
+async function readyGame(checkUpdate = false) {
   await savePreferences();
   const result = await run({Action: 'missing'});
   if (result.Missing?.length) {
     if (!await confirm('次のコンポーネントが必要です。ダウンロード / 修復しますか？\n' + result.Missing.join('\n'))) return false;
     for (const component of result.Missing) await install(component);
+  } else if (checkUpdate && ['MKXPZ', 'EasyRPG'].includes(game?.Engine)) {
+    let update;
+    try { update = (await run({Action: 'update', Component: game.Engine})).Update; }
+    catch (error) {
+      if (cancelled) return false;
+      return '更新確認に失敗しました: ' + String(error?.message || error);
+    }
+    if (cancelled) return false;
+    if (update.Available && await confirm(`${game.Engine}\n現在: ${update.Current || '未記録'}\n新しい版: ${update.Latest}\nダウンロードして更新しますか？`)) await install(game.Engine);
   }
   return true;
 }
@@ -91,7 +100,7 @@ Events.On('launcher:progress', e => {
 });
 Events.On('launcher:log', () => { if ($('log-panel').open) logs().catch(fail); });
 Events.On('launcher:game-exit', e => { message(`ゲーム終了 PID ${e.data.PID} / code ${e.data.Code}`); logs().catch(fail); });
-$('cancel').onclick = () => call('CancelOperation').catch(fail);
+$('cancel').onclick = () => { cancelled = true; return call('CancelOperation').catch(fail); };
 $('quit').onclick = () => call('RequestQuit').catch(fail);
 $('pick-game').onclick = () => perform(async () => {
   const path = await call('PickFolder');
@@ -125,8 +134,8 @@ $('uninstall-all').onclick = () => perform(async () => {
   finally { await refresh(); }
 });
 $('launch').onclick = () => perform(async () => {
-  if (!await readyGame()) return;
-  const result = await run({Action: 'launch'}); message(`起動しました PID ${result.PID}。ランチャーを終了してもゲームは継続します。`);
+  const ready = await readyGame(true); if (!ready || cancelled) return;
+  const result = await run({Action: 'launch'}); message(`${typeof ready === 'string' ? ready + '。' : ''}起動しました PID ${result.PID}。ランチャーを終了してもゲームは継続します。`);
 });
 $('export').onclick = () => perform(async () => {
   if (!await readyGame()) return;
@@ -166,8 +175,19 @@ function formValues() {
       if (enabledJSON === '"True"' || enabledJSON === '"False"') enabledJSON = enabled.checked ? '"True"' : '"False"';
       else if (enabledJSON !== 'null' || enabled.checked) enabledJSON = String(enabled.checked);
     }
+    let valueJSON = field.ReadOnly ? field.ValueJSON : field.Type === 'string' ? JSON.stringify(value.value) : field.Type === 'boolean' ? String(value.checked) : value.value;
+    if (!field.ReadOnly && field.Type === 'array') {
+      const original = JSON.parse(field.ValueJSON);
+      if (original.every(item => typeof item === 'string')) {
+        try { JSON.parse(valueJSON); } catch {
+          const lines = valueJSON.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+          // shortcut: JSON-like lines require explicit JSON, until an unambiguous input mode exists.
+          if (valueJSON.includes('\n') && lines.length && lines.every(line => !/[\[\]{}"]/.test(line) && !/^,|,$/.test(line) && !/^(?:true|false|null|-?\d+(?:\.\d+)?)$/.test(line))) valueJSON = JSON.stringify(lines);
+        }
+      }
+    }
     // Carry Go's per-field Reset intent; ordinary saves never infer a type change.
-    return {...field, Reset: field.Reset === true, EnabledJSON: enabledJSON, ValueJSON: field.ReadOnly ? field.ValueJSON : field.Type === 'string' ? JSON.stringify(value.value) : field.Type === 'boolean' ? String(value.checked) : value.value};
+    return {...field, Reset: field.Reset === true, EnabledJSON: enabledJSON, ValueJSON: valueJSON};
   });
 }
 async function openAdvanced(engine) {

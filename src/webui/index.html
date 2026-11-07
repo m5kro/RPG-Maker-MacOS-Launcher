@@ -15,7 +15,7 @@
 <p>MV / MZ: NW.js の版を選び、ゲームフォルダを選択して起動します。導入済みの版はオフラインでも利用できます。「公開版を取得」はネットワークから ARM 対応版の一覧を取得します。</p>
 <p>XP / VX / VX Ace: Game.ini を含むフォルダを選びます。Downloads 外への移動を推奨します。2000 / 2003: RPG_RT ファイルを含むフォルダを選びます。必要な MKXP-Z / EasyRPG / RTP 等は内容を確認し、同意した場合のみダウンロードします。</p>
 <p>Standalone は元ゲームを保全し、コピーを別の .app に書き出します。既存の出力は上書きしません。Windows では元の EXE を直接使用してください。</p>
-<p>保護を無効にするとゲームの子プロセス起動・外部通信が許可されます。信頼できるゲームのみで使用してください。ゲーム・セーブのバックアップを推奨します。チート・英語版展開・Optimize は実行しません。</p>
+<p>保護を無効にするとゲームの子プロセス起動・外部通信が許可されます。信頼できるゲームのみで使用してください。Bitmap.getPixel 修正は NaN / Infinity によるクラッシュを防ぎます。不要なコンポーネントは「対象を削除」から削除できます。ゲーム・セーブのバックアップを推奨します。チート・英語版展開・Optimize は実行しません。</p>
 <p>ゲームはランチャー終了後も動作を続けます。実行中は同じ管理フォルダの起動・取得・書き出し・削除がロックされます。詳細設定は保存してから起動してください。</p>
 <p>動画（URL をコピーしてブラウザで開けます）: https://www.youtube.com/watch?v=NIRiKIjhXHk</p>
 </details>
@@ -40,7 +40,7 @@
 <progress id="progress" aria-label="処理の進捗" hidden></progress>
 <button id="cancel" disabled>処理をキャンセル</button><button id="quit">終了</button>
 </section>
-<details id="log-panel"><summary>ログを表示</summary><button id="refresh-log">ログを更新</button><pre id="log" tabindex="0" aria-label="ランチャーとゲームのログ（末尾のみ）"></pre></details>
+<details id="log-panel"><summary>ログを表示</summary><p>管理フォルダの launcher.log と game.log、旧版の log.txt の末尾を表示します。ログにはゲームのパスなどが含まれる場合があります。</p><button id="refresh-log">ログを更新</button><pre id="log" tabindex="0" aria-label="ランチャーとゲームのログ（末尾のみ）"></pre></details>
 </main>
 <dialog id="advanced-dialog" aria-labelledby="advanced-title">
 <h2 id="advanced-title">詳細設定</h2><p>Force は必須です。配列・辞書・数値は正確な JSON として編集します。文字列はそのまま入力してください。Reset は保存するまで反映されません。</p>

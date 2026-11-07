@@ -192,6 +192,58 @@ func TestEngineContractComponentTransactions(t *testing.T) {
 		})
 	}
 }
+func TestMKXPZInstallWithoutUpdateAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		component Component
+		badZIP    bool
+	}{
+		{"valid", ComponentMKXPZ, false},
+		{"invalid-zip", ComponentMKXPZ, true},
+		{"easyrpg-unknown-build", ComponentEasyRPG, false},
+		{"easyrpg-invalid-zip", ComponentEasyRPG, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := engineContractManager(t)
+			marker := filepath.Join(m.Root, componentName(tc.component), "keep")
+			engineContractWrite(t, marker, []byte("old"), 0600)
+			payload := engineContractArchive(t, tc.component, false)
+			if tc.badZIP {
+				payload = []byte("invalid zip")
+			}
+			downloaded := false
+			m.client = &http.Client{Transport: engineContractTransport(func(r *http.Request) (*http.Response, error) {
+				if strings.Contains(r.URL.Path, "commits/dev") || strings.Contains(r.URL.Path, "lastSuccessfulBuild/api/json") {
+					return &http.Response{StatusCode: 503, Body: io.NopCloser(strings.NewReader("unavailable")), Header: http.Header{}}, nil
+				}
+				expected := componentRelease + "Z-universal.zip"
+				if tc.component == ComponentEasyRPG {
+					expected = easyJob + "lastSuccessfulBuild/artifact/osxbuild/EasyRPG-Player-macos.app.zip"
+				}
+				if r.URL.String() != expected {
+					t.Fatalf("unexpected download: %s", r.URL)
+				}
+				downloaded = true
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(payload)), ContentLength: int64(len(payload)), Header: http.Header{}}, nil
+			})}
+			result, err := m.InstallComponent(context.Background(), tc.component, nil)
+			if !tc.badZIP {
+				if err != nil || result.CommitSHA != "" || result.BuildNumber != 0 || !downloaded || checkComponent(result.Path, tc.component) != nil {
+					t.Fatalf("result=%+v err=%v downloaded=%v", result, err, downloaded)
+				}
+			} else {
+				if err == nil || result.Path != "" {
+					t.Fatalf("result=%+v err=%v", result, err)
+				}
+				if b, e := os.ReadFile(marker); e != nil || string(b) != "old" {
+					t.Fatal("old install changed", e)
+				}
+			}
+			noStaging(t, m.Root)
+		})
+	}
+}
+
 func TestEngineContractCancelBlockedDownload(t *testing.T) {
 	m := engineContractManager(t)
 	old := engineContractSF2()

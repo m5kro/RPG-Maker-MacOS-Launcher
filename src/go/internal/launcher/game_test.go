@@ -257,6 +257,39 @@ func TestDataContractCopyPreparationPreservesAssets(t *testing.T) {
 	}
 }
 
+func TestDataContractDecodeAmbiguousBytes(t *testing.T) {
+	for _, tc := range []struct {
+		raw      []byte
+		encoding string
+		want     string
+	}{
+		{[]byte{0xa9}, "CP932", "ｩ"},
+		{[]byte{0xc2, 0xa9}, "UTF-8", "©"},
+	} {
+		text, encoding, err := dataContractDecode(tc.raw)
+		if err != nil || encoding != tc.encoding || text != tc.want {
+			t.Fatalf("%x: %q %q %v", tc.raw, text, encoding, err)
+		}
+	}
+}
+
+func TestDataContractPackageUTF8BOM(t *testing.T) {
+	p := t.TempDir()
+	path := filepath.Join(p, "package.json")
+	dataContractPut(t, path, []byte("\ufeff{\"title\":\"日本語\"}"))
+	if _, err := PreparePackage(p, dataContractAssets(t), true); err != nil {
+		t.Fatal(err)
+	}
+	out := dataContractRead(t, path)
+	if !strings.HasPrefix(string(out), "\ufeff") {
+		t.Fatal("UTF-8 BOM lost")
+	}
+	obj, err := dataContractObject([]byte(strings.TrimPrefix(string(out), "\ufeff")))
+	if err != nil || obj["title"] != "日本語" || obj["name"] != "tempname" {
+		t.Fatalf("%#v %v", obj, err)
+	}
+}
+
 func TestDataContractPackageCP932AndMissingName(t *testing.T) {
 	p := t.TempDir()
 	assets := dataContractAssets(t)

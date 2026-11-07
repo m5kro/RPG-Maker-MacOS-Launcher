@@ -185,7 +185,7 @@ func (m *Manager) mkxpConfig(game GameInfo, a AdvancedSettings) (map[string]any,
 		if err != nil {
 			return nil, err
 		}
-		c, err = dataContractObject([]byte(txt))
+		c, err = dataContractObject([]byte(strings.TrimPrefix(txt, "\ufeff")))
 		if err != nil {
 			return nil, err
 		}

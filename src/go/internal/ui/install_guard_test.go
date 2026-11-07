@@ -12,6 +12,44 @@ import (
 	"rpgm-launcher/nwjs-helper/internal/launcher"
 )
 
+func TestInstallMKXPZUnknownCommitClearsOldSetting(t *testing.T) {
+	u := newTestUI(t)
+	old := launcher.DefaultSettings(u.manager.Root)
+	old.LastCommitSHA, old.LastBuildNumber = "old-commit", 42
+	if err := launcher.SaveSettings(u.manager.Root, old); err != nil {
+		t.Fatal(err)
+	}
+	u.installComponent = func(context.Context, launcher.Component, launcher.ProgressFunc) (launcher.InstallResult, error) {
+		return launcher.InstallResult{Path: filepath.Join(u.manager.Root, "Z-universal.app")}, nil
+	}
+	if _, err := u.Run(Request{Action: "install", Component: string(launcher.ComponentMKXPZ), Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := launcher.LoadSettings(u.manager.Root)
+	if err != nil || saved.LastCommitSHA != "" || saved.LastBuildNumber != 42 {
+		t.Fatalf("saved=%+v err=%v", saved, err)
+	}
+}
+
+func TestInstallEasyRPGUnknownBuildClearsOldSetting(t *testing.T) {
+	u := newTestUI(t)
+	old := launcher.DefaultSettings(u.manager.Root)
+	old.LastCommitSHA, old.LastBuildNumber = "old-commit", 42
+	if err := launcher.SaveSettings(u.manager.Root, old); err != nil {
+		t.Fatal(err)
+	}
+	u.installComponent = func(context.Context, launcher.Component, launcher.ProgressFunc) (launcher.InstallResult, error) {
+		return launcher.InstallResult{Path: filepath.Join(u.manager.Root, "EasyRPG Player.app")}, nil
+	}
+	if _, err := u.Run(Request{Action: "install", Component: string(launcher.ComponentEasyRPG), Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := launcher.LoadSettings(u.manager.Root)
+	if err != nil || saved.LastBuildNumber != 0 || saved.LastCommitSHA != "old-commit" {
+		t.Fatalf("saved=%+v err=%v", saved, err)
+	}
+}
+
 func TestInstallNWRejectsBackendFalseSuccess(t *testing.T) {
 	for _, fault := range []string{"pathwrong", "missing", "Intel", "invalidreceipt", "receiptless", "not-discovered", "discovery-error", "valid"} {
 		t.Run(fault, func(t *testing.T) {

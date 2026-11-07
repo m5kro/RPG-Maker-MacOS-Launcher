@@ -80,6 +80,7 @@ func New(root, resources string) (*UI, error) {
 		return nil, err
 	}
 	u.manager = m
+	u.logs.path = filepath.Join(m.Root, "launcher.log")
 	u.installComponent = m.InstallComponent
 	u.installedNWVersions = m.InstalledNWVersions
 	return u, nil
@@ -309,10 +310,10 @@ func (u *UI) Run(r Request) (result Result, err error) {
 			if isNW {
 				s.LastSelectedVersion = string(c)
 			}
-			if installed.CommitSHA != "" {
+			if c == launcher.ComponentMKXPZ || installed.CommitSHA != "" {
 				s.LastCommitSHA = installed.CommitSHA
 			}
-			if installed.BuildNumber != 0 {
+			if c == launcher.ComponentEasyRPG || installed.BuildNumber != 0 {
 				s.LastBuildNumber = installed.BuildNumber
 			}
 			if e = launcher.SaveSettings(u.manager.Root, s); e != nil {
@@ -378,12 +379,32 @@ func (u *UI) Run(r Request) (result Result, err error) {
 	return
 }
 func (u *UI) log(format string, args ...any) {
-	_, _ = fmt.Fprintf(u.logs, format+"\n", args...)
+	if _, err := fmt.Fprintf(u.logs, format+"\n", args...); err != nil {
+		u.logs.mu.Lock()
+		u.logs.text = trimLog(u.logs.text + "ログ保存失敗: " + err.Error() + "\n")
+		u.logs.mu.Unlock()
+	}
 	u.event("log", nil)
 }
 func (u *UI) Logs() (string, error) {
 	text := u.logs.String()
-	path := filepath.Join(u.manager.Root, "game.log")
+	if len(text) > maxLogBytes/4 {
+		text = strings.ToValidUTF8(text[len(text)-maxLogBytes/4:], "�")
+	}
+	for _, name := range []string{"log.txt", "launcher.log", "game.log"} {
+		part, err := readLogTail(filepath.Join(u.manager.Root, name))
+		if err != nil {
+			return text, err
+		}
+		if part != "" {
+			text += "\n--- " + name + " (末尾) ---\n" + part
+		}
+	}
+	return trimLog(text), nil
+}
+
+func readLogTail(path string) (string, error) {
+	text := ""
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return text, nil
@@ -398,22 +419,23 @@ func (u *UI) Logs() (string, error) {
 		return text, err
 	}
 	if !info.Mode().IsRegular() {
-		return text, errors.New("game.log is not a regular file")
+		return text, fmt.Errorf("%s is not a regular file", filepath.Base(path))
 	}
-	offset := info.Size() - maxLogBytes/2
+	offset := info.Size() - maxLogBytes/4
 	if offset < 0 {
 		offset = 0
 	}
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
 		return text, err
 	}
-	b, err := io.ReadAll(io.LimitReader(f, maxLogBytes/2))
-	return trimLog(text + "\n--- game.log (末尾) ---\n" + strings.ToValidUTF8(string(b), "�")), err
+	b, err := io.ReadAll(io.LimitReader(f, maxLogBytes/4))
+	return strings.ToValidUTF8(string(b), "�"), err
 }
 
 type boundedLog struct {
 	mu   sync.Mutex
 	text string
+	path string
 }
 
 func trimLog(s string) string {
@@ -429,6 +451,23 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.text = trimLog(l.text + strings.ToValidUTF8(string(b), "�"))
-	return len(b), nil
+	if l.path == "" {
+		return len(b), nil
+	}
+	fd, err := syscall.Open(l.path, syscall.O_WRONLY|syscall.O_APPEND|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0600)
+	if err != nil {
+		return 0, err
+	}
+	f := os.NewFile(uintptr(fd), l.path)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || stat.Nlink != 1 || stat.Uid != uint32(os.Geteuid()) {
+		return 0, errors.New("launcher log is not a privately owned regular file")
+	}
+	return f.Write(b)
 }
 func (l *boundedLog) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.text }

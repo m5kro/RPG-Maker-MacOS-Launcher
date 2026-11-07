@@ -117,6 +117,17 @@ func TestEngineContractInstalledNWLegacyDiscovery(t *testing.T) {
 		t.Fatal("receiptless reinstall accepted")
 	}
 }
+func TestEngineContractMKXPConfigBOM(t *testing.T) {
+	m := engineContractManager(t)
+	g := engineContractGame(t, MKXPZ)
+	path := filepath.Join(m.Root, "Z-universal.app", "Contents", "Game", "mkxp.json")
+	engineContractWrite(t, path, []byte("\ufeff{\"custom\":\"日本語\"}"), 0600)
+	c, err := m.mkxpConfig(g, DefaultAdvancedSettings())
+	if err != nil || c["custom"] != "日本語" {
+		t.Fatalf("config: %#v, error: %v", c, err)
+	}
+}
+
 func TestEngineContractMKXPConfigTypes(t *testing.T) {
 	m := engineContractManager(t)
 	g := engineContractGame(t, MKXPZ)

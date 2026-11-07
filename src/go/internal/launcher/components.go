@@ -3,6 +3,7 @@ package launcher
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -37,8 +39,8 @@ type UpdateInfo struct {
 	DownloadURL string
 }
 
-// InstallResult does not save settings. GUI must merge CommitSHA/BuildNumber into
-// its current Settings and SaveSettings only on success (never replace other fields).
+// InstallResult does not save settings. On successful MKXP-Z installation, GUI
+// must save CommitSHA even when empty (unknown), while preserving other settings.
 type InstallResult struct {
 	Path        string
 	CommitSHA   string
@@ -118,11 +120,15 @@ func (m *Manager) CheckUpdate(ctx context.Context, c Component) (UpdateInfo, err
 		}
 		u.Latest = data.SHA
 	case ComponentEasyRPG:
-		u.Current = strconv.Itoa(s.LastBuildNumber)
+		if s.LastBuildNumber > 0 {
+			u.Current = strconv.Itoa(s.LastBuildNumber)
+		}
+		u.DownloadURL = easyJob + "lastSuccessfulBuild/artifact/osxbuild/EasyRPG-Player-macos.app.zip"
 		b, err := m.componentConfig().metadata(ctx, easyJob+"lastSuccessfulBuild/api/json", maxMetadata)
 		if err != nil {
 			return u, err
 		}
+		u.DownloadURL = ""
 		var data struct {
 			Number    int    `json:"number"`
 			Result    string `json:"result"`
@@ -187,7 +193,13 @@ func (m *Manager) InstallComponent(ctx context.Context, c Component, progress Pr
 	case ComponentMKXPZ, ComponentEasyRPG:
 		update, err = m.CheckUpdate(ctx, c)
 		if err != nil {
-			return result, err
+			if ctx.Err() != nil {
+				return result, err
+			}
+			if update.DownloadURL == "" {
+				return result, err
+			}
+			err = nil
 		}
 		source = update.DownloadURL
 	case ComponentRTP:
@@ -246,6 +258,17 @@ func (m *Manager) InstallComponent(ctx context.Context, c Component, progress Pr
 		return result, err
 	}
 	target := filepath.Join(m.Root, name)
+	if c == ComponentRTP || c == ComponentKawariki {
+		if info, e := os.Lstat(target); e == nil && info.IsDir() {
+			if _, e = os.Lstat(filepath.Join(target, ".rpgm-complete.json")); errors.Is(e, os.ErrNotExist) {
+				return result, fmt.Errorf("refusing to replace markerless %s: it may contain user data; back it up and move it before reinstalling", name)
+			} else if e != nil {
+				return result, e
+			}
+		} else if e != nil && !errors.Is(e, os.ErrNotExist) {
+			return result, e
+		}
+	}
 	if err = m.publishComponent(payload, target); err != nil {
 		return result, err
 	}
@@ -360,12 +383,17 @@ func checkComponent(p string, c Component) error {
 			return err
 		}
 		b, err := dataContractReadRegular(filepath.Join(p, ".rpgm-complete.json"))
-		if err != nil {
-			return fmt.Errorf("resource has no completed-install marker: %w", err)
-		}
-		var marker map[string]string
-		if err = json.Unmarshal(b, &marker); err != nil || marker["component"] != string(c) {
-			return errors.New("invalid resource completion marker")
+		if errors.Is(err, os.ErrNotExist) {
+			if err = checkLegacyResource(p, c); err != nil {
+				return fmt.Errorf("resource has no completed-install marker and does not match the legacy distribution: %w", err)
+			}
+		} else if err != nil {
+			return err
+		} else {
+			var marker map[string]string
+			if err = json.Unmarshal(b, &marker); err != nil || marker["component"] != string(c) {
+				return errors.New("invalid resource completion marker")
+			}
 		}
 		if c == ComponentKawariki {
 			f, err := regularFile(filepath.Join(p, "preload.rb"))
@@ -394,6 +422,64 @@ func checkComponent(p string, c Component) error {
 	}
 	return fmt.Errorf("unknown component %q", c)
 }
+
+// The Python installer extracted these release archives directly, without a receipt.
+// Hash every distributed file; do not write a marker into the user's directory.
+func checkLegacyResource(p string, c Component) error {
+	want := map[Component]string{
+		ComponentRTP:      "3832debd08a0fcf1093fc0267a6fcc1f9e476c2f42ec1dbe42e664572cf245ac",
+		ComponentKawariki: "785c614ba701453b68b6613c5d363391744fadc75ce5f8148f8a15c8a67702aa",
+	}[c]
+	digest, err := legacyResourceDigest(p)
+	if err != nil {
+		return err
+	}
+	if digest != want {
+		return errors.New("legacy resource contents differ")
+	}
+	return nil
+}
+
+func legacyResourceDigest(p string) (string, error) {
+	var files []string
+	err := filepath.WalkDir(p, func(name string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if entry.Name() == ".DS_Store" {
+			return nil
+		}
+		files = append(files, name)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+	h := sha256.New()
+	for _, name := range files {
+		rel, err := filepath.Rel(p, name)
+		if err != nil {
+			return "", err
+		}
+		f, err := dataContractOpenRegular(name)
+		if err != nil {
+			return "", err
+		}
+		fileHash := sha256.New()
+		_, readErr := io.Copy(fileHash, f)
+		if err = errors.Join(readErr, f.Close()); err != nil {
+			return "", err
+		}
+		_, _ = io.WriteString(h, filepath.ToSlash(rel)+"\x00")
+		_, _ = h.Write(fileHash.Sum(nil))
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
 func checkSoundFont(p string) error {
 	f, err := dataContractOpenRegular(p)
 	if err != nil {
