@@ -252,6 +252,108 @@ func TestNWRejectsAppleDouble(t *testing.T) {
 	failedInstall(t, fixture(t, makeZIP(t, es), nil))
 }
 
+func TestKawarikiZIPAppleDouble(t *testing.T) {
+	// All three metadata layouts from the official kawariki.zip (207,537 bytes,
+	// SHA-256 63acba9051437c51310507f7fd740e9abb7d27a58a78181273ecf347a95ac05d).
+	metadata := map[string][]byte{}
+	for name, encoded := range map[string]string{
+		".DS_Store":     "00051607000200004d6163204f5320582020202020202020000200000009000000320000004600000002000000780000000020202020202020204010000000000000000000000000000000000000000000000000415454520000000000000078000000780000000000000000000000000000000000000000",
+		"versions.json": "00051607000200004d6163204f532058202020202020202000020000000900000032000000a300000002000000d500000000000000000000000000000000000000000000000000000000000000000000000000004154545200000000000000d5000000980000003d00000000000000000000000000000001000000980000003d000015636f6d2e6170706c652e71756172616e74696e6500712f303238313b36373861663839383b46697265666f783b38433231394137442d304539312d343538312d414644382d44303443374644444332323500",
+		"preload.rb":    "00051607000200004d6163204f532058202020202020202000020000000900000032000000ce00000002000001000000000000000000000000000000000000000000000000000000000000000000000000000000415454520000000000000100000000b80000004800000000000000000000000000000002000000b80000000b000015636f6d2e6170706c652e70726f76656e616e636500000000c30000003d000015636f6d2e6170706c652e71756172616e74696e65000102008f159b706845a7ee712f303238313b36373861663839383b46697265666f783b38433231394137442d304539312d343538312d414644382d44303443374644444332323500",
+	} {
+		b, err := hex.DecodeString(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata[name] = b
+	}
+	const meta = "__MACOSX/kawariki/._preload.rb"
+	for _, tc := range []struct {
+		name   string
+		path   string
+		body   []byte
+		mode   os.FileMode
+		mutate func([]byte)
+	}{
+		{name: "official-layout"},
+		{name: "arbitrary-metadata", path: meta, body: []byte("not AppleDouble")},
+		{name: "unknown-attribute", path: meta, body: bytes.ReplaceAll(metadata["preload.rb"], []byte("com.apple.quarantine"), []byte("com.apple.unknown___"))},
+		{name: "nonempty-resource-fork", path: meta, mutate: func(b []byte) { b[49] = 1 }},
+		{name: "attribute-out-of-bounds", path: meta, mutate: func(b []byte) { b[120] = 255 }},
+		{name: "store-info-on-runtime-file", path: meta, body: metadata[".DS_Store"]},
+		{name: "unknown-store-info", path: "__MACOSX/kawariki/._.DS_Store", body: metadata[".DS_Store"], mutate: func(b []byte) { b[60] = 1 }},
+		{name: "unknown-store-flags", path: "__MACOSX/kawariki/._.DS_Store", body: metadata[".DS_Store"], mutate: func(b []byte) { b[59] = 0x11 }},
+		{name: "traversal", path: "__MACOSX/kawariki/../._preload.rb"},
+		{name: "other-root", path: "__MACOSX/other/._preload.rb"},
+		{name: "orphan", path: "__MACOSX/kawariki/._missing"},
+		{name: "symlink", path: meta, mode: os.ModeSymlink | 0777},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := engineContractManager(t)
+			engineContractHTTP(t, m, engineContractArchive(t, ComponentKawariki, false), "")
+			old, err := m.InstallComponent(context.Background(), ComponentKawariki, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(old.Path, "keep")
+			engineContractWrite(t, marker, []byte("old"), 0600)
+			replace := "preload.rb"
+			if tc.path == "__MACOSX/kawariki/._.DS_Store" {
+				replace = ".DS_Store"
+			}
+			entries := []zipEntry{{"kawariki/", os.ModeDir | 0755, nil}}
+			for _, name := range []string{".DS_Store", "versions.json", "preload.rb"} {
+				entries = append(entries, zipEntry{"kawariki/" + name, 0644, []byte("unchanged " + name)})
+				entry := zipEntry{"__MACOSX/kawariki/._" + name, 0644, metadata[name]}
+				if tc.path != "" && name == replace {
+					entry.name = tc.path
+					if tc.body != nil {
+						entry.data = tc.body
+					}
+					entry.data = bytes.Clone(entry.data)
+					if tc.mutate != nil {
+						tc.mutate(entry.data)
+					}
+					if tc.mode != 0 {
+						entry.mode = tc.mode
+					}
+				}
+				entries = append(entries, entry)
+			}
+			engineContractHTTP(t, m, makeZIP(t, entries), "")
+			result, err := m.InstallComponent(context.Background(), ComponentKawariki, nil)
+			if tc.path == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := checkComponent(result.Path, ComponentKawariki); err != nil {
+					t.Fatal(err)
+				}
+				for name := range metadata {
+					b, err := os.ReadFile(filepath.Join(result.Path, name))
+					if err != nil || string(b) != "unchanged "+name {
+						t.Fatal("data fork changed", name, err)
+					}
+				}
+				if _, err := os.Lstat(marker); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("old install not replaced", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("unsafe Kawariki metadata accepted")
+				}
+				if b, err := os.ReadFile(marker); err != nil || string(b) != "old" {
+					t.Fatal("old install changed", err)
+				}
+			}
+			if _, err := os.Lstat(filepath.Join(m.Root, "__MACOSX")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("metadata published", err)
+			}
+			noStaging(t, m.Root)
+		})
+	}
+}
+
 // Keep the fixture's resource fork descriptor explicit as a guard against
 // accidentally treating nonempty forks as disposable packaging metadata.
 func TestComponentAppleDoubleFixture(t *testing.T) {

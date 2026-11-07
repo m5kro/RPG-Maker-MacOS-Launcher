@@ -207,7 +207,7 @@ func (m *Manager) InstallComponent(ctx context.Context, c Component, progress Pr
 	case ComponentKawariki:
 		source = componentRelease + "kawariki.zip"
 	case ComponentSoundFont:
-		source = "https://musical-artifacts.com/artifacts/841/GMGSx.SF2"
+		source = componentRelease + "GMGSx.SF2"
 	}
 	stage, err := os.MkdirTemp(m.Root, ".runtime-stage-")
 	if err != nil {
@@ -224,7 +224,7 @@ func (m *Manager) InstallComponent(ctx context.Context, c Component, progress Pr
 		if err = os.Mkdir(unpacked, 0700); err != nil {
 			return result, err
 		}
-		if err = extractZIP(ctx, archive, unpacked, name, progress, c == ComponentMKXPZ || c == ComponentEasyRPG); err != nil {
+		if err = extractZIP(ctx, archive, unpacked, name, progress, c == ComponentMKXPZ || c == ComponentEasyRPG || c == ComponentKawariki); err != nil {
 			return result, err
 		}
 		payload = filepath.Join(unpacked, name)
@@ -282,18 +282,23 @@ func (m *Manager) InstallComponent(ctx context.Context, c Component, progress Pr
 	return result, nil
 }
 
-// Accept only the macOS AppleDouble layout with empty resource fork and FinderInfo.
+// Accept only the macOS AppleDouble layout with empty resource fork and known FinderInfo.
 // Unknown forks/attributes fail closed rather than silently losing runtime data.
-func validateComponentAppleDouble(b []byte) error {
+func validateComponentAppleDouble(b []byte, name string) error {
 	invalid := errors.New("unsupported AppleDouble metadata (refusing to discard unknown data)")
 	be := binary.BigEndian
 	if len(b) < 120 || be.Uint32(b[:4]) != 0x00051607 || be.Uint32(b[4:8]) != 0x00020000 || be.Uint16(b[24:26]) != 2 {
 		return invalid
 	}
+	finderInfo := make([]byte, 34)
+	if path.Base(name) == "._.DS_Store" && bytes.Equal(b[50:60], []byte("        \x40\x10")) {
+		// Finder's .DS_Store uses blank type/creator plus invisible and initialized flags.
+		copy(finderInfo, b[50:60])
+	}
 	// FinderInfo (ID 9) occupies the body; resource fork (ID 2) must be empty at EOF.
 	if be.Uint32(b[26:30]) != 9 || be.Uint32(b[30:34]) != 50 || uint64(be.Uint32(b[34:38])) != uint64(len(b)-50) ||
 		be.Uint32(b[38:42]) != 2 || uint64(be.Uint32(b[42:46])) != uint64(len(b)) || be.Uint32(b[46:50]) != 0 ||
-		!bytes.Equal(b[50:84], make([]byte, 34)) || string(b[84:88]) != "ATTR" {
+		!bytes.Equal(b[50:84], finderInfo) || string(b[84:88]) != "ATTR" {
 		return invalid
 	}
 	dataStart := uint64(be.Uint32(b[96:100]))
@@ -314,7 +319,8 @@ func validateComponentAppleDouble(b []byte) error {
 		}
 		name := string(b[p+11 : p+10+n])
 		switch name {
-		case "com.apple.provenance", "com.apple.TextEncoding", "com.apple.lastuseddate#PS":
+		case "com.apple.provenance", "com.apple.TextEncoding", "com.apple.lastuseddate#PS", "com.apple.quarantine":
+			// These are distributor metadata, not runtime data; never apply their xattrs.
 		default:
 			if !strings.HasPrefix(name, "com.apple.metadata:kMDLabel_") || strings.ContainsRune(name, 0) {
 				return invalid

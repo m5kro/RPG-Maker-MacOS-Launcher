@@ -244,6 +244,26 @@ func TestMKXPZInstallWithoutUpdateAPI(t *testing.T) {
 	}
 }
 
+func TestSoundFontReleaseSource(t *testing.T) {
+	m := engineContractManager(t)
+	payload := engineContractSF2()
+	requested := false
+	m.client = &http.Client{Transport: engineContractTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() != "https://github.com/m5kro/mkxp-z/releases/download/launcher/GMGSx.SF2" {
+			t.Fatalf("unexpected SoundFont source: %s", r.URL)
+		}
+		requested = true
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(payload)), ContentLength: int64(len(payload)), Header: http.Header{}}, nil
+	})}
+	result, err := m.InstallComponent(context.Background(), ComponentSoundFont, nil)
+	if err != nil || !requested {
+		t.Fatalf("SoundFont download: requested=%v err=%v", requested, err)
+	}
+	if b, err := os.ReadFile(result.Path); err != nil || !bytes.Equal(b, payload) {
+		t.Fatal("SoundFont payload changed", err)
+	}
+}
+
 func TestEngineContractCancelBlockedDownload(t *testing.T) {
 	m := engineContractManager(t)
 	old := engineContractSF2()

@@ -119,7 +119,7 @@ func extractZIP(ctx context.Context, archive, dest, prefix string, progress Prog
 			if err := errors.Join(readErr, r.Close()); err != nil {
 				return err
 			}
-			if err := validateComponentAppleDouble(b); err != nil {
+			if err := validateComponentAppleDouble(b, f.Name); err != nil {
 				return fmt.Errorf("%s: %w", f.Name, err)
 			}
 			completed += int64(len(b))
