@@ -13,6 +13,10 @@ run = 'sh scripts/shell/build-launcher.sh production RPG-Maker-Launcher.app "{{c
 description = "Build the optional development NW.js CLI (not bundled)"
 run = "sh scripts/shell/build-nwjs-helper.sh"
 
+[tasks.build-cli]
+description = "Build the game launch CLI"
+run = 'mkdir -p build/helpers/arm64 && go -C src/go build -o "{{config_root}}/build/helpers/arm64/rpgm-cli" ./cmd/rpgm-cli'
+
 [tasks.test]
 description = "Run uncached Go tests, race detector and vet; no native acceptance"
 run = [

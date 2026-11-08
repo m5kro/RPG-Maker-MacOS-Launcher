@@ -64,6 +64,23 @@ mise exec -- sh scripts/shell/build-launcher.sh production MyLauncher.app "$PWD/
 
 画面で公開版取得→NW.js導入、バックアップ済みゲームフォルダー選択→起動の順に試します。パッチ設定を確認してください。上流の[操作動画](https://www.youtube.com/watch?v=NIRiKIjhXHk)は旧画面の案内です。
 
+### AI・スクリプトからゲームコピーを起動
+
+GUIと同じbackendを使う開発用CLIです。ゲームの`package.json`・保護JS・パッチなどを変更する場合があるため、**原本とセーブをバックアップし、専用コピーを指定してください**。ゲームのコードはユーザー権限で実行され、CLIや専用rootはサンドボックスではありません。
+
+```sh
+mise run build-cli
+build/helpers/arm64/rpgm-cli launch \
+  --root /absolute/path/to/managed-root \
+  --game /absolute/path/to/game-copy \
+  --resources "$PWD/src/javascript" \
+  --runtime v0.94.1
+```
+
+`--root`は導入済みランタイムとGUI設定の管理場所です。`--runtime`はNW.jsの版を一時的に指定し、省略すると保存済みの選択を使います。MKXP-Z・EasyRPGでは該当する導入済みruntimeと設定を使います。CLIは導入・ダウンロードしません。標準出力のJSONにはPID・エンジン・ゲームログのパス・警告が入り、標準エラーには診断情報が出ます。起動後はCLIが終了してもゲームは継続します。`--wait`を付けると終了を待ち、終了コードとシグナル終了時のシグナル名をJSONで出力します。待機中の割り込みはゲームを終了しません。
+
+`started`はプロセス開始のみを示し、画面表示やゲーム互換性の保証ではありません。`game.log`は起動ごとの区切り付きで標準出力・標準エラーを追記しますが、ゲーム画面内のエラーやJavaScript例外をすべて検出するものではありません。ログにはゲームのパスなどが含まれます。
+
 ### 配置とテスト
 
 ```text

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,6 +97,49 @@ func TestEngineContractLaunchArgumentsAndExit(t *testing.T) {
 				t.Fatal("save changed")
 			}
 		})
+	}
+}
+func TestEngineContractLaunchLogSeparatesRuns(t *testing.T) {
+	m := engineContractManager(t)
+	g := engineContractGame(t, NWJS)
+	engineContractRuntime(t, m, NWJS)
+	path := g.Path + "\n--- forged ---\""
+	if err := os.Rename(g.Path, path); err != nil {
+		t.Fatal(err)
+	}
+	g.Path = path
+	logPath := filepath.Join(m.Root, "game.log")
+	engineContractWrite(t, logPath, []byte("old output"), 0600)
+	m.command = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "printf stdout; printf stderr >&2")
+	}
+	for i := 0; i < 2; i++ {
+		p, err := m.Launch(context.Background(), g, Settings{LastSelectedVersion: "v1.2.3"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = p.Wait(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(b), "\n")
+	if len(lines) != 5 || lines[0] != "old output" || lines[2] != "stdoutstderr" || lines[4] != "stdoutstderr" {
+		t.Fatalf("unexpected log: %q", b)
+	}
+	for _, line := range []string{lines[1], lines[3]} {
+		const prefix = "--- launch time="
+		if !strings.HasPrefix(line, prefix) {
+			t.Fatalf("missing separator: %q", line)
+		}
+		timestamp, rest, ok := strings.Cut(strings.TrimPrefix(line, prefix), " ")
+		parsed, err := time.Parse(time.RFC3339Nano, timestamp)
+		if !ok || err != nil || parsed.Location() != time.UTC || rest != fmt.Sprintf("engine=%q game=%q nw_version=%q ---", NWJS, g.Path, "v1.2.3") {
+			t.Fatalf("invalid separator: %q", line)
+		}
 	}
 }
 func TestEngineContractGameLifetimeAndLock(t *testing.T) {

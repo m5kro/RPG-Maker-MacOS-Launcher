@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // Process owns one started game. Wait cancellation only stops waiting, never the
@@ -241,6 +242,13 @@ func (m *Manager) Launch(ctx context.Context, game GameInfo, s Settings) (*Proce
 		return nil, errors.New("game log is not a privately owned regular file")
 	}
 	if err = m.logf("Launching %s from %s; game log: %s\n", game.Engine, game.Path, logPath); err != nil {
+		return nil, err
+	}
+	nwVersion := ""
+	if game.Engine == NWJS {
+		nwVersion = s.LastSelectedVersion
+	}
+	if _, err = fmt.Fprintf(log, "\n--- launch time=%s engine=%q game=%q nw_version=%q ---\n", time.Now().UTC().Format(time.RFC3339Nano), game.Engine, game.Path, nwVersion); err != nil {
 		return nil, err
 	}
 	cmd := m.command(program, args...)
