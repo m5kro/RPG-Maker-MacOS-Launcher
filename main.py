@@ -9,10 +9,13 @@ import platform
 import chardet
 import logging
 import re
+import plistlib
+import shlex
+import uuid
+from xml.parsers.expat import ExpatError
 from pathlib import Path
 from functools import partial
 from evbunpack.__main__ import unpack_files
-from shared_nwjs import create_shared_app
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
@@ -208,7 +211,7 @@ class RPGMLauncher(QMainWindow):
         self.uninstall_button.clicked.connect(self.uninstall_menu)
         self.select_button.clicked.connect(self.select_folder)
         self.start_game_button.clicked.connect(self.start_game)
-        self.export_button.clicked.connect(self.export_standalone_app)
+        self.export_button.clicked.connect(self.export_app)
         self.open_save_editor_button.clicked.connect(self.open_save_editor)
         self.mkxpz_advanced_button.clicked.connect(self.open_mkxpz_advanced_settings)
         self.easyrpg_advanced_button.clicked.connect(self.open_easyrpg_advanced_settings)
@@ -1417,7 +1420,90 @@ class RPGMLauncher(QMainWindow):
             logging.error("Failed to launch EasyRPG: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to launch EasyRPG: {str(e)}")
 
-    def export_standalone_app(self):
+    def create_shared_nwjs_app(self, destination, app_name, runtime, rosetta):
+        if app_name in ('.', '..') or '/' in app_name or '\0' in app_name:
+            raise ValueError("Application name must be a filename, not a path.")
+        if not os.path.isfile(runtime) or not os.access(runtime, os.X_OK):
+            raise FileNotFoundError("The selected NW.js runtime is missing or not executable.")
+        os.mkdir(destination)  # Never overwrite an existing destination.
+        try:
+            contents = os.path.join(destination, "Contents")
+            macos = os.path.join(contents, "MacOS")
+            app_nw_dir = os.path.join(contents, "Resources", "app.nw")
+            os.makedirs(macos)
+            os.makedirs(app_nw_dir)
+            bundle_id = 'org.rpgmlauncher.shared.' + uuid.uuid4().hex
+            info = {
+                'CFBundleName': app_name,
+                'CFBundleDisplayName': app_name,
+                'CFBundleIdentifier': bundle_id,
+                'CFBundlePackageType': 'APPL',
+                'CFBundleExecutable': 'launch'
+            }
+            runtime_contents = os.path.dirname(os.path.dirname(runtime))
+            resources = os.path.join(runtime_contents, "Resources")
+            icon_data = None
+            try:
+                with open(os.path.join(runtime_contents, "Info.plist"), 'rb') as file:
+                    runtime_info = plistlib.load(file)
+                icon = runtime_info.get('CFBundleIconFile') if isinstance(runtime_info, dict) else None
+                if isinstance(icon, str) and icon not in ('', '.', '..') and not any(c in icon for c in '/\\\0'):
+                    if not os.path.splitext(icon)[1] and not os.path.isfile(os.path.join(resources, icon)):
+                        icon += '.icns'
+                    source = os.path.realpath(os.path.join(resources, icon))
+                    if os.path.commonpath((os.path.realpath(resources), source)) == os.path.realpath(resources):
+                        with open(source, 'rb') as file:
+                            icon_data = file.read()
+            except (OSError, ValueError, TypeError, OverflowError, ExpatError):
+                pass
+            if icon_data is not None:
+                icon_name = 'runtime-icon' + (os.path.splitext(icon)[1] or '.icns')
+                with open(os.path.join(contents, "Resources", icon_name), 'wb') as file:
+                    file.write(icon_data)
+                info['CFBundleIconFile'] = icon_name
+            with open(os.path.join(contents, "Info.plist"), 'wb') as file:
+                plistlib.dump(info, file)
+            shutil.copyfile(os.path.join(os.path.dirname(__file__), 'shared_selector.js'),
+                            os.path.join(contents, "Resources", 'shared_selector.js'))
+            root = os.path.dirname(os.path.dirname(os.path.dirname(runtime_contents)))
+            script = os.path.join(macos, "launch")
+            with open(script, 'w', encoding='utf-8') as file:
+                file.write(
+                    '#!/bin/sh\n'
+                    'root=' + shlex.quote(root) + '\n'
+                    'bundle=' + shlex.quote(bundle_id) + '\n'
+                    'runtime=' + shlex.quote(runtime) + '\n'
+                    'rosetta=' + ('1' if rosetta else '0') + '\n'
+                    'version=$(/usr/bin/defaults read "$bundle" runtimeVersion 2>/dev/null)\n'
+                    'case "$version" in v* ) case "$version" in */*) version=;; esac;; *) version=;; esac\n'
+                    'if [ -n "$version" ]; then\n'
+                    '  runtime="$root/$version/nwjs.app/Contents/MacOS/nwjs"\n'
+                    '  rosetta=0; [ ! -e "$root/$version/run-with-rosetta" ] || rosetta=1\n'
+                    'fi\n'
+                    'reason=\n'
+                    'if [ ! -f "$runtime" ] || [ ! -x "$runtime" ]; then reason=missing\n'
+                    'elif [ -n "$version" ] && [ "$(/usr/bin/defaults read "$bundle" skipConfirmation 2>/dev/null)" != 1 ]; then reason=confirm; fi\n'
+                    'if [ -n "$reason" ]; then\n'
+                    '  version=$(/usr/bin/osascript -l JavaScript "$(dirname "$0")/../Resources/shared_selector.js" "$root" "$bundle" "$reason") || exit 1\n'
+                    '  [ -n "$version" ] || exit 1\n'
+                    '  runtime="$root/$version/nwjs.app/Contents/MacOS/nwjs"\n'
+                    '  rosetta=0; [ ! -e "$root/$version/run-with-rosetta" ] || rosetta=1\n'
+                    'fi\n'
+                    'if [ ! -f "$runtime" ] || [ ! -x "$runtime" ]; then\n'
+                    '  /usr/bin/osascript -e \'display dialog "The selected NW.js runtime is missing. Install a version in RPG Maker Launcher and try again." with icon stop\'\n'
+                    '  exit 1\n'
+                    'fi\n'
+                    'game="$(dirname "$0")/../Resources/app.nw"\n'
+                    'if [ "$rosetta" = 1 ]; then exec /usr/bin/arch -x86_64 "$runtime" "$game"; fi\n'
+                    'exec "$runtime" "$game"\n'
+                )
+            os.chmod(script, 0o755)
+            return app_nw_dir
+        except BaseException:
+            shutil.rmtree(destination, ignore_errors=True)
+            raise
+
+    def export_app(self):
         app_name, ok = self.get_app_name()
         if not ok:
             return
@@ -1468,13 +1554,13 @@ class RPGMLauncher(QMainWindow):
                         continue
                     total_files += len(files)
 
-                progress_dialog = QProgressDialog("Exporting standalone app...", "Cancel", 0, total_files, self)
+                progress_dialog = QProgressDialog("Exporting app...", "Cancel", 0, total_files, self)
                 progress_dialog.setWindowModality(Qt.WindowModal)
                 progress_dialog.setMinimumDuration(0)
                 progress_dialog.show()
 
                 if self.shared_nwjs_checkbox.isChecked():
-                    app_nw_dir = create_shared_app(nwjs_app_dst, app_name,
+                    app_nw_dir = self.create_shared_nwjs_app(nwjs_app_dst, app_name,
                         os.path.join(nwjs_app_src, "Contents", "MacOS", "nwjs"),
                         os.path.exists(os.path.join(nwjs_dir, "run-with-rosetta")))
                     shared_destination = nwjs_app_dst
@@ -1515,7 +1601,7 @@ class RPGMLauncher(QMainWindow):
                 progress_dialog.close()
                 shared_destination = None
                 QMessageBox.information(self, "Export Complete", "App exported successfully.")
-                logging.info("Standalone app exported successfully to %s", destination_folder)
+                logging.info("App exported successfully to %s", destination_folder)
 
                 if not self.shared_nwjs_checkbox.isChecked():
                     QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
@@ -1770,8 +1856,8 @@ class RPGMLauncher(QMainWindow):
         except Exception as e:
             if shared_destination:
                 shutil.rmtree(shared_destination, ignore_errors=True)
-            logging.error("Error exporting standalone app: %s", str(e))
-            QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
+            logging.error("Error exporting app: %s", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to export app: {str(e)}")
 
     def get_app_name(self):
         dialog = QDialog(self)
