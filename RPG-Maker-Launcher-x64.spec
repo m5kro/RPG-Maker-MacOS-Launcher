@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('Cheat_Menu.js', '.'), ('Cheat_Menu.css', '.'), ('EasyRPG-Standalone', '.'), ('bg.js', '.'), ('disable-child.js', '.'), ('disable-net.js', '.')],
+    datas=[('Cheat_Menu.js', '.'), ('Cheat_Menu.css', '.'), ('EasyRPG-Standalone', '.'), ('bg.js', '.'), ('disable-child.js', '.'), ('disable-net.js', '.'), ('shared_selector.js', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

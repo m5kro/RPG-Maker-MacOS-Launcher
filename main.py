@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 from functools import partial
 from evbunpack.__main__ import unpack_files
+from shared_nwjs import create_shared_app
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QFileDialog,
                                QVBoxLayout, QHBoxLayout, QWidget, QMessageBox, QDialog, QComboBox,
                                QDialogButtonBox, QScrollArea, QGroupBox, QFormLayout, QLabel, QCheckBox, QProgressDialog, QLineEdit, QPlainTextEdit)
@@ -177,7 +178,11 @@ class RPGMLauncher(QMainWindow):
         self.layout.addWidget(self.start_game_button)
         self.start_game_button.setEnabled(False)  # Disable until conditions are met
 
-        self.export_button = QPushButton("Export as Standalone App", self)
+        self.shared_nwjs_checkbox = QCheckBox("NW.js export: use shared runtime (not standalone)", self)
+        self.shared_nwjs_checkbox.setToolTip("Only NW.js exports use the selected installed runtime. MKXP-Z and EasyRPG exports remain standalone.")
+        self.layout.addWidget(self.shared_nwjs_checkbox)
+
+        self.export_button = QPushButton("Export App (standalone by default)", self)
         self.layout.addWidget(self.export_button)
         self.export_button.setEnabled(False)  # Disable until conditions are met
 
@@ -232,7 +237,7 @@ class RPGMLauncher(QMainWindow):
             "   - 'Disable Protection': Allows child_process to be used and allows outbound connections.\n"
             "   - 'Patch Bitmap.getPixel': Fixes crashes related to NaN/Infinity in Bitmap.getPixel.\n\n"
             "4. Click 'Start Game' to launch the game using the selected NWJS version.\n\n"
-            "5. Click 'Export as Standalone App' to create a standalone application for the game.\n\n"
+            "5. Click 'Export App' to create a standalone application. Optionally enable the NW.js shared-runtime export to use the installed version instead; MKXP-Z and EasyRPG exports remain standalone.\n\n"
             "6. Click 'Open Save Editor' to open the save editor website and the save folder.\n\n"
             "7. Click 'Uninstall Component' to remove installed versions of NWJS or other components.\n"
             "_____________________________________________________________________________\n"
@@ -299,6 +304,7 @@ class RPGMLauncher(QMainWindow):
                     self.optimize_space_checkbox.setChecked(settings.get('optimize_space', False))
                     self.disable_protection_checkbox.setChecked(settings.get('disable_protection', False))
                     self.getpixel_patch_checkbox.setChecked(settings.get('patch_getpixel', True))
+                    self.shared_nwjs_checkbox.setChecked(settings.get('shared_nwjs_export', False))
                     last_version = settings.get('last_selected_version')
                     if last_version and last_version in [self.version_selector.itemText(i) for i in range(self.version_selector.count())]:
                         self.version_selector.setCurrentText(last_version)
@@ -326,6 +332,7 @@ class RPGMLauncher(QMainWindow):
             'optimize_space': self.optimize_space_checkbox.isChecked(),
             'disable_protection': self.disable_protection_checkbox.isChecked(),
             'patch_getpixel': self.getpixel_patch_checkbox.isChecked(),
+            'shared_nwjs_export': self.shared_nwjs_checkbox.isChecked(),
             'last_selected_version': self.version_selector.currentText(),
             'last_selected_folder': self.last_selected_folder,
             'launcher_version': current_version,
@@ -1428,6 +1435,7 @@ class RPGMLauncher(QMainWindow):
             # Ensure trailing separator for proper prefix check
             return child_abs == parent_abs or child_abs.startswith(parent_abs + os.sep)
 
+        shared_destination = None
         try:
             if self.check_package_json(folder_path):
                 # NWJS export process
@@ -1465,10 +1473,15 @@ class RPGMLauncher(QMainWindow):
                 progress_dialog.setMinimumDuration(0)
                 progress_dialog.show()
 
-                shutil.copytree(nwjs_app_src, nwjs_app_dst)
-
-                app_nw_dir = os.path.join(nwjs_app_dst, "Contents", "Resources", "app.nw")
-                os.makedirs(app_nw_dir, exist_ok=True)
+                if self.shared_nwjs_checkbox.isChecked():
+                    app_nw_dir = create_shared_app(nwjs_app_dst, app_name,
+                        os.path.join(nwjs_app_src, "Contents", "MacOS", "nwjs"),
+                        os.path.exists(os.path.join(nwjs_dir, "run-with-rosetta")))
+                    shared_destination = nwjs_app_dst
+                else:
+                    shutil.copytree(nwjs_app_src, nwjs_app_dst)
+                    app_nw_dir = os.path.join(nwjs_app_dst, "Contents", "Resources", "app.nw")
+                    os.makedirs(app_nw_dir, exist_ok=True)
 
                 current_file_count = 0
                 for root, dirs, files in os.walk(self.last_selected_folder, topdown=True):
@@ -1493,14 +1506,19 @@ class RPGMLauncher(QMainWindow):
                         QApplication.processEvents()
                         if progress_dialog.wasCanceled():
                             logging.info("Export canceled by user.")
+                            if shared_destination:
+                                shutil.rmtree(shared_destination)
+                                shared_destination = None
                             QMessageBox.information(self, "Export Canceled", "Export operation was canceled.")
                             return
 
                 progress_dialog.close()
-                QMessageBox.information(self, "Export Complete", "Standalone app exported successfully.")
+                shared_destination = None
+                QMessageBox.information(self, "Export Complete", "App exported successfully.")
                 logging.info("Standalone app exported successfully to %s", destination_folder)
 
-                QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
+                if not self.shared_nwjs_checkbox.isChecked():
+                    QMessageBox.warning(self, "First Launch Warning", "Due to MacOS permissions, the first launch of the standalone app may stall or crash. To fix, simply force quit the app and reopen it.")
                 
             elif self.check_game_ini(folder_path):
                 if not self.check_mkxpz_installed() or not self.check_RTP_installed() or not self.check_soundfont_installed():
@@ -1750,6 +1768,8 @@ class RPGMLauncher(QMainWindow):
                 QMessageBox.critical(self, "Error", "No valid game file (package.json, Game.ini, or RTP_RT) found in the selected folder.")
 
         except Exception as e:
+            if shared_destination:
+                shutil.rmtree(shared_destination, ignore_errors=True)
             logging.error("Error exporting standalone app: %s", str(e))
             QMessageBox.critical(self, "Error", f"Failed to export standalone app: {str(e)}")
 

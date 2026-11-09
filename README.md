@@ -22,6 +22,12 @@ Ethereum Wallet:<br>
 3. Unpacks game_en.exe if it exists
 4. Points nwjs, mkxp-z, or EasyRPG to directory
 5. Launches game
+
+## Shared NW.js exports
+Exports are standalone by default. To save disk space, enable **NW.js export: use shared runtime** before exporting an MV/MZ game. The app contains its own copy of the game, but uses the exact NW.js installation and Rosetta choice selected at export time. The option is remembered; MKXP-Z and EasyRPG exports are always standalone.
+
+Shared exports use runtimes installed in the exporting account. If the selected version is missing, choose another installed version or install one in RPG Maker Launcher. No runtime is downloaded automatically. After selecting a replacement, leave **Skip future confirmation** unchecked to choose or confirm a version on each launch; checking it launches that version without asking while it remains installed. Missing runtimes always prompt again. To reset a skipped choice, remove the exported app's preferences using `defaults delete <bundle identifier>` (the identifier is in its `Contents/Info.plist`), or remove the selected runtime. A different NW.js version may not be compatible with the game. Source-game extraction, cheat and optimization options still operate on the original game before copying. Game files, including saves stored inside the game, are separate from the source. As with other exports, macOS security permissions may affect launching.
+
 # How to build
 If the [prebuilt releases](https://github.com/m5kro/RPG-Maker-MacOS-Launcher/releases/latest) don't work, or you'd like to add a feature, here are instructions on how to build the app:<br><br>
 Recommended Python version is 3.11<br>
